@@ -2422,6 +2422,662 @@ app.delete('/api/bank-statements/:id', authMiddleware, async (c) => {
 })
 
 // ============================================
+// ENDPOINTS - REPORTES AVANZADOS
+// ============================================
+
+// GET /api/reports/income-by-category
+app.get('/api/reports/income-by-category', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { start_date, end_date, company_id, account_id } = c.req.query()
+
+    const DB = c.env.DB
+
+    let whereConditions = [
+      "m.type = 'income'",
+      "m.status != 'cancelled'",
+      "c.user_id = ?"
+    ]
+    let params: any[] = [user.userId]
+
+    if (start_date) {
+      whereConditions.push("m.date >= ?")
+      params.push(start_date)
+    }
+    if (end_date) {
+      whereConditions.push("m.date <= ?")
+      params.push(end_date)
+    }
+    if (company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(company_id)
+    }
+    if (account_id) {
+      whereConditions.push("m.account_id = ?")
+      params.push(account_id)
+    }
+
+    const query = `
+      SELECT
+        cat.id,
+        cat.name,
+        cat.color,
+        SUM(m.amount) as total,
+        COUNT(m.id) as count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON m.category_id = cat.id
+      WHERE ${whereConditions.join(' AND ')}
+      GROUP BY cat.id, cat.name, cat.color
+      ORDER BY total DESC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    const totalIncome = results.results.reduce((sum: number, row: any) =>
+      sum + parseFloat(row.total || '0'), 0
+    )
+
+    const categories = results.results.map((row: any) => ({
+      category_id: row.id,
+      category_name: row.name || 'Sin categoría',
+      category_color: row.color || '#6B7280',
+      total: parseFloat(row.total || '0'),
+      count: parseInt(row.count || '0'),
+      percentage: totalIncome > 0 ? (parseFloat(row.total || '0') / totalIncome * 100) : 0
+    }))
+
+    return c.json({
+      period: { start_date: start_date || null, end_date: end_date || null },
+      total_income: totalIncome,
+      categories,
+      categories_count: categories.length
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/reports/expense-by-category
+app.get('/api/reports/expense-by-category', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { start_date, end_date, company_id, account_id } = c.req.query()
+
+    const DB = c.env.DB
+
+    let whereConditions = [
+      "m.type = 'expense'",
+      "m.status != 'cancelled'",
+      "c.user_id = ?"
+    ]
+    let params: any[] = [user.userId]
+
+    if (start_date) {
+      whereConditions.push("m.date >= ?")
+      params.push(start_date)
+    }
+    if (end_date) {
+      whereConditions.push("m.date <= ?")
+      params.push(end_date)
+    }
+    if (company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(company_id)
+    }
+    if (account_id) {
+      whereConditions.push("m.account_id = ?")
+      params.push(account_id)
+    }
+
+    const query = `
+      SELECT
+        cat.id,
+        cat.name,
+        cat.color,
+        SUM(m.amount) as total,
+        COUNT(m.id) as count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON m.category_id = cat.id
+      WHERE ${whereConditions.join(' AND ')}
+      GROUP BY cat.id, cat.name, cat.color
+      ORDER BY total DESC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    const totalExpense = results.results.reduce((sum: number, row: any) =>
+      sum + parseFloat(row.total || '0'), 0
+    )
+
+    const categories = results.results.map((row: any) => ({
+      category_id: row.id,
+      category_name: row.name || 'Sin categoría',
+      category_color: row.color || '#6B7280',
+      total: parseFloat(row.total || '0'),
+      count: parseInt(row.count || '0'),
+      percentage: totalExpense > 0 ? (parseFloat(row.total || '0') / totalExpense * 100) : 0
+    }))
+
+    return c.json({
+      period: { start_date: start_date || null, end_date: end_date || null },
+      total_expense: totalExpense,
+      categories,
+      categories_count: categories.length
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/reports/cash-flow
+app.get('/api/reports/cash-flow', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { start_date, end_date, company_id, account_id, group_by } = c.req.query()
+    const groupBy = group_by || 'month' // month, week, day
+
+    const DB = c.env.DB
+
+    let whereConditions = [
+      "m.status != 'cancelled'",
+      "c.user_id = ?"
+    ]
+    let params: any[] = [user.userId]
+
+    if (start_date) {
+      whereConditions.push("m.date >= ?")
+      params.push(start_date)
+    }
+    if (end_date) {
+      whereConditions.push("m.date <= ?")
+      params.push(end_date)
+    }
+    if (company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(company_id)
+    }
+    if (account_id) {
+      whereConditions.push("m.account_id = ?")
+      params.push(account_id)
+    }
+
+    let dateFormat: string
+    if (groupBy === 'day') {
+      dateFormat = "m.date"
+    } else if (groupBy === 'week') {
+      dateFormat = "strftime('%Y-W%W', m.date)"
+    } else {
+      dateFormat = "strftime('%Y-%m', m.date)"
+    }
+
+    const query = `
+      SELECT
+        ${dateFormat} as period,
+        SUM(CASE WHEN m.type = 'income' THEN m.amount ELSE 0 END) as income,
+        SUM(CASE WHEN m.type = 'expense' THEN m.amount ELSE 0 END) as expense,
+        COUNT(CASE WHEN m.type = 'income' THEN 1 END) as income_count,
+        COUNT(CASE WHEN m.type = 'expense' THEN 1 END) as expense_count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE ${whereConditions.join(' AND ')}
+      GROUP BY period
+      ORDER BY period ASC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    const periods = results.results.map((row: any) => {
+      const income = parseFloat(row.income || '0')
+      const expense = parseFloat(row.expense || '0')
+      const net = income - expense
+
+      return {
+        period: row.period,
+        income,
+        expense,
+        net,
+        income_count: parseInt(row.income_count || '0'),
+        expense_count: parseInt(row.expense_count || '0')
+      }
+    })
+
+    const totals = periods.reduce((acc, p) => ({
+      total_income: acc.total_income + p.income,
+      total_expense: acc.total_expense + p.expense,
+      net_cash_flow: acc.net_cash_flow + p.net
+    }), { total_income: 0, total_expense: 0, net_cash_flow: 0 })
+
+    return c.json({
+      period: { start_date: start_date || null, end_date: end_date || null },
+      group_by: groupBy,
+      totals,
+      periods
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/reports/balance-sheet
+app.get('/api/reports/balance-sheet', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { as_of_date, company_id } = c.req.query()
+    const asOfDate = as_of_date || new Date().toISOString().split('T')[0]
+
+    const DB = c.env.DB
+
+    let whereConditions = ["c.user_id = ?", "c.active = 1"]
+    let params: any[] = [user.userId]
+
+    if (company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(company_id)
+    }
+
+    // Obtener todas las cuentas con sus saldos
+    const accountsQuery = `
+      SELECT
+        a.id,
+        a.name,
+        a.bank_name,
+        a.initial_saldo,
+        c.id as company_id,
+        c.name as company_name,
+        c.color as company_color
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE ${whereConditions.join(' AND ')} AND a.active = 1
+    `
+
+    const accountsResult = await DB.prepare(accountsQuery).bind(...params).all()
+
+    const accounts = []
+    let totalAssets = 0
+
+    for (const account of accountsResult.results) {
+      const balance = await calculateBalance(DB, account.id as string, asOfDate)
+      accounts.push({
+        account_id: account.id,
+        account_name: account.name,
+        bank_name: account.bank_name,
+        company_id: account.company_id,
+        company_name: account.company_name,
+        balance
+      })
+      totalAssets += balance
+    }
+
+    // Calcular "pasivos" - en este contexto, serían saldos negativos o transferencias pendientes
+    // Por ahora simplificado: pasivos = 0, patrimonio = activos
+    const totalLiabilities = 0
+    const totalEquity = totalAssets
+
+    return c.json({
+      as_of_date: asOfDate,
+      balance_sheet: {
+        assets: {
+          cash_and_equivalents: totalAssets,
+          accounts: accounts,
+          total: totalAssets
+        },
+        liabilities: {
+          accounts_payable: 0,
+          total: totalLiabilities
+        },
+        equity: {
+          retained_earnings: totalEquity,
+          total: totalEquity
+        }
+      },
+      check: {
+        assets_equals_liabilities_plus_equity: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+      }
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/reports/evolution
+app.get('/api/reports/evolution', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { start_date, end_date, company_id, account_id } = c.req.query()
+
+    const DB = c.env.DB
+
+    let whereConditions = [
+      "m.status != 'cancelled'",
+      "c.user_id = ?"
+    ]
+    let params: any[] = [user.userId]
+
+    if (start_date) {
+      whereConditions.push("m.date >= ?")
+      params.push(start_date)
+    }
+    if (end_date) {
+      whereConditions.push("m.date <= ?")
+      params.push(end_date)
+    }
+    if (company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(company_id)
+    }
+    if (account_id) {
+      whereConditions.push("m.account_id = ?")
+      params.push(account_id)
+    }
+
+    const query = `
+      SELECT
+        strftime('%Y-%m', m.date) as month,
+        SUM(CASE WHEN m.type = 'income' THEN m.amount ELSE 0 END) as income,
+        SUM(CASE WHEN m.type = 'expense' THEN m.amount ELSE 0 END) as expense
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE ${whereConditions.join(' AND ')}
+      GROUP BY month
+      ORDER BY month ASC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    let cumulativeBalance = 0
+    const evolution = results.results.map((row: any) => {
+      const income = parseFloat(row.income || '0')
+      const expense = parseFloat(row.expense || '0')
+      const net = income - expense
+      cumulativeBalance += net
+
+      return {
+        month: row.month,
+        income,
+        expense,
+        net,
+        cumulative_balance: cumulativeBalance
+      }
+    })
+
+    return c.json({
+      period: { start_date: start_date || null, end_date: end_date || null },
+      evolution
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
+// ENDPOINTS - DASHBOARD MEJORADO
+// ============================================
+
+// GET /api/dashboard/kpis
+app.get('/api/dashboard/kpis', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { start_date, end_date } = c.req.query()
+
+    const DB = c.env.DB
+
+    // KPI 1: Total de empresas activas
+    const companiesResult = await DB.prepare(
+      'SELECT COUNT(*) as count FROM companies WHERE user_id = ? AND active = 1'
+    ).bind(user.userId).first() as any
+
+    // KPI 2: Total de cuentas activas
+    const accountsResult = await DB.prepare(`
+      SELECT COUNT(*) as count
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ? AND a.active = 1 AND c.active = 1
+    `).bind(user.userId).first() as any
+
+    // KPI 3: Saldo total consolidado
+    const accountsList = await DB.prepare(`
+      SELECT a.id
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ? AND a.active = 1 AND c.active = 1
+    `).bind(user.userId).all()
+
+    let totalBalance = 0
+    for (const account of accountsList.results) {
+      const balance = await calculateBalance(DB, account.id as string)
+      totalBalance += balance
+    }
+
+    // KPI 4: Ingresos y egresos del período
+    let whereConditions = ["c.user_id = ?", "m.status != 'cancelled'"]
+    let params: any[] = [user.userId]
+
+    if (start_date) {
+      whereConditions.push("m.date >= ?")
+      params.push(start_date)
+    }
+    if (end_date) {
+      whereConditions.push("m.date <= ?")
+      params.push(end_date)
+    }
+
+    const movementsResult = await DB.prepare(`
+      SELECT
+        SUM(CASE WHEN m.type = 'income' THEN m.amount ELSE 0 END) as total_income,
+        SUM(CASE WHEN m.type = 'expense' THEN m.amount ELSE 0 END) as total_expense,
+        COUNT(CASE WHEN m.type = 'income' THEN 1 END) as income_count,
+        COUNT(CASE WHEN m.type = 'expense' THEN 1 END) as expense_count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE ${whereConditions.join(' AND ')}
+    `).bind(...params).first() as any
+
+    const totalIncome = parseFloat(movementsResult?.total_income || '0')
+    const totalExpense = parseFloat(movementsResult?.total_expense || '0')
+    const netIncome = totalIncome - totalExpense
+
+    // KPI 5: Promedio diario
+    const daysInPeriod = start_date && end_date ?
+      Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24)) : 30
+
+    // KPI 6: Burn rate (gasto promedio mensual)
+    const burnRate = totalExpense / (daysInPeriod / 30)
+
+    // KPI 7: Runway (meses que puede operar con el saldo actual)
+    const runway = burnRate > 0 ? totalBalance / burnRate : null
+
+    // KPI 8: Margen neto
+    const netMargin = totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0
+
+    return c.json({
+      period: { start_date: start_date || null, end_date: end_date || null },
+      kpis: {
+        companies_count: parseInt(companiesResult?.count || '0'),
+        accounts_count: parseInt(accountsResult?.count || '0'),
+        total_balance: totalBalance,
+        total_income: totalIncome,
+        total_expense: totalExpense,
+        net_income: netIncome,
+        income_count: parseInt(movementsResult?.income_count || '0'),
+        expense_count: parseInt(movementsResult?.expense_count || '0'),
+        avg_daily_income: totalIncome / daysInPeriod,
+        avg_daily_expense: totalExpense / daysInPeriod,
+        burn_rate: burnRate,
+        runway_months: runway,
+        net_margin_percent: netMargin
+      }
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// Mejorar el endpoint existente de dashboard/summary
+// GET /api/dashboard/summary (ya existe, pero vamos a mejorarlo)
+app.get('/api/dashboard/summary-v2', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const DB = c.env.DB
+
+    // 1. Resumen de empresas y cuentas
+    const companies = await DB.prepare(`
+      SELECT
+        c.id,
+        c.name,
+        c.color,
+        COUNT(a.id) as accounts_count
+      FROM companies c
+      LEFT JOIN bank_accounts a ON c.id = a.company_id AND a.active = 1
+      WHERE c.user_id = ? AND c.active = 1
+      GROUP BY c.id, c.name, c.color
+    `).bind(user.userId).all()
+
+    const accounts = await DB.prepare(`
+      SELECT
+        a.id,
+        a.name,
+        a.bank_name,
+        a.initial_saldo,
+        c.id as company_id,
+        c.name as company_name,
+        c.color as company_color
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ? AND a.active = 1 AND c.active = 1
+    `).bind(user.userId).all()
+
+    // Calcular saldos
+    const accountsWithBalances = []
+    let totalBalance = 0
+
+    for (const account of accounts.results) {
+      const balance = await calculateBalance(DB, account.id as string)
+      accountsWithBalances.push({
+        id: account.id,
+        name: account.name,
+        bank_name: account.bank_name,
+        company_id: account.company_id,
+        company_name: account.company_name,
+        company_color: account.company_color,
+        balance
+      })
+      totalBalance += balance
+    }
+
+    // 2. Movimientos recientes (últimos 10)
+    const recentMovements = await DB.prepare(`
+      SELECT
+        m.*,
+        a.name as account_name,
+        c.name as company_name,
+        c.color as company_color,
+        cat.name as category_name,
+        cat.color as category_color
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON m.category_id = cat.id
+      WHERE c.user_id = ?
+      ORDER BY m.date DESC, m.created_at DESC
+      LIMIT 10
+    `).bind(user.userId).all()
+
+    // 3. Top 5 categorías de ingresos
+    const topIncomeCategories = await DB.prepare(`
+      SELECT
+        cat.name,
+        cat.color,
+        SUM(m.amount) as total
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON m.category_id = cat.id
+      WHERE c.user_id = ? AND m.type = 'income' AND m.status != 'cancelled'
+      GROUP BY cat.id, cat.name, cat.color
+      ORDER BY total DESC
+      LIMIT 5
+    `).bind(user.userId).all()
+
+    // 4. Top 5 categorías de egresos
+    const topExpenseCategories = await DB.prepare(`
+      SELECT
+        cat.name,
+        cat.color,
+        SUM(m.amount) as total
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON m.category_id = cat.id
+      WHERE c.user_id = ? AND m.type = 'expense' AND m.status != 'cancelled'
+      GROUP BY cat.id, cat.name, cat.color
+      ORDER BY total DESC
+      LIMIT 5
+    `).bind(user.userId).all()
+
+    // 5. Estadísticas del mes actual
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const monthStats = await DB.prepare(`
+      SELECT
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+        COUNT(CASE WHEN type = 'income' THEN 1 END) as income_count,
+        COUNT(CASE WHEN type = 'expense' THEN 1 END) as expense_count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ?
+        AND m.status != 'cancelled'
+        AND strftime('%Y-%m', m.date) = ?
+    `).bind(user.userId, currentMonth).first() as any
+
+    // 6. Cuentas con saldo bajo (< 10,000)
+    const lowBalanceAccounts = accountsWithBalances.filter(acc => acc.balance < 10000)
+
+    return c.json({
+      summary: {
+        total_balance: totalBalance,
+        companies_count: companies.results.length,
+        accounts_count: accounts.results.length
+      },
+      current_month: {
+        month: currentMonth,
+        income: parseFloat(monthStats?.income || '0'),
+        expense: parseFloat(monthStats?.expense || '0'),
+        net: parseFloat(monthStats?.income || '0') - parseFloat(monthStats?.expense || '0'),
+        income_count: parseInt(monthStats?.income_count || '0'),
+        expense_count: parseInt(monthStats?.expense_count || '0')
+      },
+      companies: companies.results,
+      accounts: accountsWithBalances,
+      recent_movements: recentMovements.results,
+      top_income_categories: topIncomeCategories.results.map((r: any) => ({
+        name: r.name || 'Sin categoría',
+        color: r.color || '#6B7280',
+        total: parseFloat(r.total || '0')
+      })),
+      top_expense_categories: topExpenseCategories.results.map((r: any) => ({
+        name: r.name || 'Sin categoría',
+        color: r.color || '#6B7280',
+        total: parseFloat(r.total || '0')
+      })),
+      alerts: {
+        low_balance_accounts: lowBalanceAccounts,
+        low_balance_count: lowBalanceAccounts.length
+      }
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
 // FRONTEND - HTML
 // ============================================
 
