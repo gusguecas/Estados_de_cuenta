@@ -3078,6 +3078,731 @@ app.get('/api/dashboard/summary-v2', authMiddleware, async (c) => {
 })
 
 // ============================================
+// ENDPOINTS - PRESUPUESTOS (BUDGETS)
+// ============================================
+
+// POST /api/budgets - Crear presupuesto
+app.post('/api/budgets', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const {
+      name,
+      amount,
+      period_type,
+      year,
+      month,
+      budget_type,
+      category_id,
+      account_id,
+      company_id,
+      notes
+    } = await c.req.json()
+
+    if (!name || !amount || !period_type || !year || !budget_type) {
+      return c.json({ error: 'Faltan parámetros requeridos' }, 400)
+    }
+
+    if (period_type === 'monthly' && !month) {
+      return c.json({ error: 'El mes es requerido para presupuestos mensuales' }, 400)
+    }
+
+    const DB = c.env.DB
+    const budgetId = generateId()
+
+    await DB.prepare(`
+      INSERT INTO budgets (
+        id, user_id, name, amount, period_type, year, month,
+        budget_type, category_id, account_id, company_id, notes,
+        created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      budgetId,
+      user.userId,
+      name,
+      amount,
+      period_type,
+      year,
+      month || null,
+      budget_type,
+      category_id || null,
+      account_id || null,
+      company_id || null,
+      notes || null,
+      user.userId
+    ).run()
+
+    const budget = await DB.prepare(
+      'SELECT * FROM budgets WHERE id = ?'
+    ).bind(budgetId).first()
+
+    return c.json({ success: true, budget })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/budgets - Listar presupuestos
+app.get('/api/budgets', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { year, month, period_type, budget_type, category_id } = c.req.query()
+
+    const DB = c.env.DB
+
+    let whereConditions = ['b.user_id = ?', 'b.active = 1']
+    let params: any[] = [user.userId]
+
+    if (year) {
+      whereConditions.push('b.year = ?')
+      params.push(parseInt(year))
+    }
+    if (month) {
+      whereConditions.push('b.month = ?')
+      params.push(parseInt(month))
+    }
+    if (period_type) {
+      whereConditions.push('b.period_type = ?')
+      params.push(period_type)
+    }
+    if (budget_type) {
+      whereConditions.push('b.budget_type = ?')
+      params.push(budget_type)
+    }
+    if (category_id) {
+      whereConditions.push('b.category_id = ?')
+      params.push(category_id)
+    }
+
+    const query = `
+      SELECT
+        b.*,
+        cat.name as category_name,
+        cat.color as category_color,
+        a.name as account_name,
+        c.name as company_name
+      FROM budgets b
+      LEFT JOIN categories cat ON b.category_id = cat.id
+      LEFT JOIN bank_accounts a ON b.account_id = a.id
+      LEFT JOIN companies c ON b.company_id = c.id
+      WHERE ${whereConditions.join(' AND ')}
+      ORDER BY b.year DESC, b.month DESC, b.created_at DESC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    return c.json({ budgets: results.results })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/budgets/:id - Obtener presupuesto
+app.get('/api/budgets/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const budgetId = c.req.param('id')
+
+    const DB = c.env.DB
+
+    const budget = await DB.prepare(`
+      SELECT
+        b.*,
+        cat.name as category_name,
+        cat.color as category_color,
+        a.name as account_name,
+        c.name as company_name
+      FROM budgets b
+      LEFT JOIN categories cat ON b.category_id = cat.id
+      LEFT JOIN bank_accounts a ON b.account_id = a.id
+      LEFT JOIN companies c ON b.company_id = c.id
+      WHERE b.id = ? AND b.user_id = ?
+    `).bind(budgetId, user.userId).first()
+
+    if (!budget) {
+      return c.json({ error: 'Presupuesto no encontrado' }, 404)
+    }
+
+    return c.json({ budget })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/budgets/:id/comparison - Comparar presupuesto vs real
+app.get('/api/budgets/:id/comparison', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const budgetId = c.req.param('id')
+
+    const DB = c.env.DB
+
+    const budget = await DB.prepare(
+      'SELECT * FROM budgets WHERE id = ? AND user_id = ?'
+    ).bind(budgetId, user.userId).first() as any
+
+    if (!budget) {
+      return c.json({ error: 'Presupuesto no encontrado' }, 404)
+    }
+
+    // Calcular período
+    let startDate: string
+    let endDate: string
+
+    if (budget.period_type === 'monthly') {
+      startDate = `${budget.year}-${String(budget.month).padStart(2, '0')}-01`
+      const lastDay = new Date(budget.year, budget.month, 0).getDate()
+      endDate = `${budget.year}-${String(budget.month).padStart(2, '0')}-${lastDay}`
+    } else if (budget.period_type === 'quarterly') {
+      const quarter = Math.ceil(budget.month / 3)
+      const startMonth = (quarter - 1) * 3 + 1
+      startDate = `${budget.year}-${String(startMonth).padStart(2, '0')}-01`
+      const endMonth = quarter * 3
+      const lastDay = new Date(budget.year, endMonth, 0).getDate()
+      endDate = `${budget.year}-${String(endMonth).padStart(2, '0')}-${lastDay}`
+    } else {
+      startDate = `${budget.year}-01-01`
+      endDate = `${budget.year}-12-31`
+    }
+
+    // Consultar movimientos reales
+    let whereConditions = [
+      "m.status != 'cancelled'",
+      "m.date >= ?",
+      "m.date <= ?",
+      "m.type = ?"
+    ]
+    let params: any[] = [startDate, endDate, budget.budget_type]
+
+    if (budget.category_id) {
+      whereConditions.push("m.category_id = ?")
+      params.push(budget.category_id)
+    }
+    if (budget.account_id) {
+      whereConditions.push("m.account_id = ?")
+      params.push(budget.account_id)
+    }
+    if (budget.company_id) {
+      whereConditions.push("c.id = ?")
+      params.push(budget.company_id)
+    }
+
+    const query = `
+      SELECT
+        SUM(m.amount) as total_actual,
+        COUNT(m.id) as movement_count
+      FROM movements m
+      JOIN bank_accounts a ON m.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ? AND ${whereConditions.join(' AND ')}
+    `
+
+    const result = await DB.prepare(query).bind(user.userId, ...params).first() as any
+
+    const totalActual = parseFloat(result?.total_actual || '0')
+    const budgetAmount = parseFloat(budget.amount || '0')
+    const difference = budgetAmount - totalActual
+    const percentage = budgetAmount > 0 ? (totalActual / budgetAmount) * 100 : 0
+
+    let status: string
+    if (percentage <= 80) {
+      status = 'under_budget'
+    } else if (percentage <= 100) {
+      status = 'on_track'
+    } else if (percentage <= 110) {
+      status = 'near_limit'
+    } else {
+      status = 'over_budget'
+    }
+
+    return c.json({
+      budget: {
+        id: budget.id,
+        name: budget.name,
+        amount: budgetAmount,
+        period_type: budget.period_type,
+        year: budget.year,
+        month: budget.month,
+        budget_type: budget.budget_type
+      },
+      period: { start_date: startDate, end_date: endDate },
+      actual: {
+        total: totalActual,
+        movement_count: parseInt(result?.movement_count || '0')
+      },
+      comparison: {
+        difference,
+        percentage,
+        status,
+        remaining: budget.budget_type === 'expense' ? difference : -difference
+      }
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// PUT /api/budgets/:id - Actualizar presupuesto
+app.put('/api/budgets/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const budgetId = c.req.param('id')
+    const { name, amount, notes, active } = await c.req.json()
+
+    const DB = c.env.DB
+
+    const existing = await DB.prepare(
+      'SELECT * FROM budgets WHERE id = ? AND user_id = ?'
+    ).bind(budgetId, user.userId).first()
+
+    if (!existing) {
+      return c.json({ error: 'Presupuesto no encontrado' }, 404)
+    }
+
+    await DB.prepare(`
+      UPDATE budgets
+      SET name = ?,
+          amount = ?,
+          notes = ?,
+          active = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      name || existing.name,
+      amount !== undefined ? amount : existing.amount,
+      notes !== undefined ? notes : existing.notes,
+      active !== undefined ? active : existing.active,
+      budgetId
+    ).run()
+
+    const updated = await DB.prepare(
+      'SELECT * FROM budgets WHERE id = ?'
+    ).bind(budgetId).first()
+
+    return c.json({ success: true, budget: updated })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// DELETE /api/budgets/:id - Eliminar presupuesto
+app.delete('/api/budgets/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const budgetId = c.req.param('id')
+
+    const DB = c.env.DB
+
+    const existing = await DB.prepare(
+      'SELECT * FROM budgets WHERE id = ? AND user_id = ?'
+    ).bind(budgetId, user.userId).first()
+
+    if (!existing) {
+      return c.json({ error: 'Presupuesto no encontrado' }, 404)
+    }
+
+    // Soft delete
+    await DB.prepare(
+      'UPDATE budgets SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(budgetId).run()
+
+    return c.json({ success: true, message: 'Presupuesto eliminado' })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
+// ENDPOINTS - MOVIMIENTOS RECURRENTES
+// ============================================
+
+// Función helper: Calcular siguiente ocurrencia
+function calculateNextOccurrence(frequency: string, currentDate: string, dayOfMonth?: number, dayOfWeek?: number): string {
+  const date = new Date(currentDate)
+
+  switch (frequency) {
+    case 'daily':
+      date.setDate(date.getDate() + 1)
+      break
+    case 'weekly':
+      date.setDate(date.getDate() + 7)
+      break
+    case 'biweekly':
+      date.setDate(date.getDate() + 14)
+      break
+    case 'monthly':
+      date.setMonth(date.getMonth() + 1)
+      if (dayOfMonth) {
+        date.setDate(dayOfMonth)
+      }
+      break
+    case 'quarterly':
+      date.setMonth(date.getMonth() + 3)
+      break
+    case 'yearly':
+      date.setFullYear(date.getFullYear() + 1)
+      break
+  }
+
+  return date.toISOString().split('T')[0]
+}
+
+// POST /api/recurring-movements - Crear movimiento recurrente
+app.post('/api/recurring-movements', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const {
+      account_id,
+      category_id,
+      name,
+      amount,
+      type,
+      frequency,
+      start_date,
+      end_date,
+      day_of_month,
+      day_of_week,
+      description,
+      reference,
+      auto_generate
+    } = await c.req.json()
+
+    if (!account_id || !name || !amount || !type || !frequency || !start_date) {
+      return c.json({ error: 'Faltan parámetros requeridos' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Verificar que la cuenta pertenece al usuario
+    const account = await DB.prepare(`
+      SELECT a.id
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(account_id, user.userId).first()
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    const recurringId = generateId()
+    const nextOccurrence = calculateNextOccurrence(frequency, start_date, day_of_month, day_of_week)
+
+    await DB.prepare(`
+      INSERT INTO recurring_movements (
+        id, account_id, category_id, name, amount, type,
+        frequency, start_date, end_date, next_occurrence,
+        day_of_month, day_of_week, description, reference,
+        auto_generate, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      recurringId,
+      account_id,
+      category_id || null,
+      name,
+      amount,
+      type,
+      frequency,
+      start_date,
+      end_date || null,
+      nextOccurrence,
+      day_of_month || null,
+      day_of_week || null,
+      description || null,
+      reference || null,
+      auto_generate !== undefined ? auto_generate : 1,
+      user.userId
+    ).run()
+
+    const recurring = await DB.prepare(
+      'SELECT * FROM recurring_movements WHERE id = ?'
+    ).bind(recurringId).first()
+
+    return c.json({ success: true, recurring_movement: recurring })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/recurring-movements - Listar movimientos recurrentes
+app.get('/api/recurring-movements', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { account_id, type, active } = c.req.query()
+
+    const DB = c.env.DB
+
+    let whereConditions = ['c.user_id = ?']
+    let params: any[] = [user.userId]
+
+    if (account_id) {
+      whereConditions.push('rm.account_id = ?')
+      params.push(account_id)
+    }
+    if (type) {
+      whereConditions.push('rm.type = ?')
+      params.push(type)
+    }
+    if (active !== undefined) {
+      whereConditions.push('rm.active = ?')
+      params.push(active === 'true' ? 1 : 0)
+    }
+
+    const query = `
+      SELECT
+        rm.*,
+        a.name as account_name,
+        cat.name as category_name,
+        cat.color as category_color,
+        c.name as company_name,
+        c.color as company_color
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON rm.category_id = cat.id
+      WHERE ${whereConditions.join(' AND ')}
+      ORDER BY rm.next_occurrence ASC
+    `
+
+    const results = await DB.prepare(query).bind(...params).all()
+
+    return c.json({ recurring_movements: results.results })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/recurring-movements/:id - Obtener movimiento recurrente
+app.get('/api/recurring-movements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const recurringId = c.req.param('id')
+
+    const DB = c.env.DB
+
+    const recurring = await DB.prepare(`
+      SELECT
+        rm.*,
+        a.name as account_name,
+        cat.name as category_name,
+        c.name as company_name
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON rm.category_id = cat.id
+      WHERE rm.id = ? AND c.user_id = ?
+    `).bind(recurringId, user.userId).first()
+
+    if (!recurring) {
+      return c.json({ error: 'Movimiento recurrente no encontrado' }, 404)
+    }
+
+    return c.json({ recurring_movement: recurring })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// POST /api/recurring-movements/:id/generate - Generar movimiento desde recurrente
+app.post('/api/recurring-movements/:id/generate', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const recurringId = c.req.param('id')
+    const { date } = await c.req.json()
+
+    const DB = c.env.DB
+
+    const recurring = await DB.prepare(`
+      SELECT rm.*
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE rm.id = ? AND c.user_id = ? AND rm.active = 1
+    `).bind(recurringId, user.userId).first() as any
+
+    if (!recurring) {
+      return c.json({ error: 'Movimiento recurrente no encontrado' }, 404)
+    }
+
+    const generatedDate = date || new Date().toISOString().split('T')[0]
+
+    // Crear movimiento
+    const movementId = generateId()
+    await DB.prepare(`
+      INSERT INTO movements (
+        id, account_id, category_id, date, type, amount,
+        name, description, reference, status, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      movementId,
+      recurring.account_id,
+      recurring.category_id,
+      generatedDate,
+      recurring.type,
+      recurring.amount,
+      recurring.name,
+      recurring.description,
+      recurring.reference,
+      'completed',
+      user.userId
+    ).run()
+
+    // Registrar generación
+    const genId = generateId()
+    await DB.prepare(`
+      INSERT INTO generated_movements (
+        id, recurring_movement_id, movement_id, generated_date, generated_for_date
+      ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+    `).bind(genId, recurringId, movementId, generatedDate).run()
+
+    // Actualizar recurrente
+    const nextOccurrence = calculateNextOccurrence(
+      recurring.frequency,
+      generatedDate,
+      recurring.day_of_month,
+      recurring.day_of_week
+    )
+
+    await DB.prepare(`
+      UPDATE recurring_movements
+      SET last_generated_date = ?,
+          next_occurrence = ?,
+          times_generated = times_generated + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(generatedDate, nextOccurrence, recurringId).run()
+
+    const movement = await DB.prepare(
+      'SELECT * FROM movements WHERE id = ?'
+    ).bind(movementId).first()
+
+    return c.json({
+      success: true,
+      message: 'Movimiento generado exitosamente',
+      movement
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// PUT /api/recurring-movements/:id - Actualizar movimiento recurrente
+app.put('/api/recurring-movements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const recurringId = c.req.param('id')
+    const { name, amount, description, reference, auto_generate, active } = await c.req.json()
+
+    const DB = c.env.DB
+
+    const existing = await DB.prepare(`
+      SELECT rm.*
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE rm.id = ? AND c.user_id = ?
+    `).bind(recurringId, user.userId).first() as any
+
+    if (!existing) {
+      return c.json({ error: 'Movimiento recurrente no encontrado' }, 404)
+    }
+
+    await DB.prepare(`
+      UPDATE recurring_movements
+      SET name = ?,
+          amount = ?,
+          description = ?,
+          reference = ?,
+          auto_generate = ?,
+          active = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      name || existing.name,
+      amount !== undefined ? amount : existing.amount,
+      description !== undefined ? description : existing.description,
+      reference !== undefined ? reference : existing.reference,
+      auto_generate !== undefined ? auto_generate : existing.auto_generate,
+      active !== undefined ? active : existing.active,
+      recurringId
+    ).run()
+
+    const updated = await DB.prepare(
+      'SELECT * FROM recurring_movements WHERE id = ?'
+    ).bind(recurringId).first()
+
+    return c.json({ success: true, recurring_movement: updated })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// DELETE /api/recurring-movements/:id - Eliminar movimiento recurrente
+app.delete('/api/recurring-movements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const recurringId = c.req.param('id')
+
+    const DB = c.env.DB
+
+    const existing = await DB.prepare(`
+      SELECT rm.*
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE rm.id = ? AND c.user_id = ?
+    `).bind(recurringId, user.userId).first()
+
+    if (!existing) {
+      return c.json({ error: 'Movimiento recurrente no encontrado' }, 404)
+    }
+
+    // Soft delete
+    await DB.prepare(
+      'UPDATE recurring_movements SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(recurringId).run()
+
+    return c.json({ success: true, message: 'Movimiento recurrente eliminado' })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/recurring-movements/pending - Movimientos recurrentes pendientes de generar
+app.get('/api/recurring-movements/pending', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const today = new Date().toISOString().split('T')[0]
+
+    const DB = c.env.DB
+
+    const results = await DB.prepare(`
+      SELECT
+        rm.*,
+        a.name as account_name,
+        cat.name as category_name,
+        c.name as company_name
+      FROM recurring_movements rm
+      JOIN bank_accounts a ON rm.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      LEFT JOIN categories cat ON rm.category_id = cat.id
+      WHERE c.user_id = ?
+        AND rm.active = 1
+        AND rm.auto_generate = 1
+        AND rm.next_occurrence <= ?
+        AND (rm.end_date IS NULL OR rm.end_date >= ?)
+      ORDER BY rm.next_occurrence ASC
+    `).bind(user.userId, today, today).all()
+
+    return c.json({
+      pending_count: results.results.length,
+      pending_movements: results.results
+    })
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
 // FRONTEND - HTML
 // ============================================
 
