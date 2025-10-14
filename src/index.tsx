@@ -1777,6 +1777,651 @@ app.get('/api/imports/history', authMiddleware, async (c) => {
 })
 
 // ============================================
+// ENDPOINTS - ESTADOS DE CUENTA BANCARIOS
+// ============================================
+
+// Función helper: Calcular saldos del sistema para un período
+async function calculateSystemBalanceForPeriod(
+  DB: D1Database,
+  accountId: string,
+  periodStart: string,
+  periodEnd: string
+) {
+  // Saldo inicial del sistema (hasta el día anterior al inicio del período)
+  const previousDayQuery = await DB.prepare(`
+    SELECT
+      SUM(CASE WHEN type = 'income' AND status != 'cancelled' THEN amount ELSE 0 END) as total_income,
+      SUM(CASE WHEN type = 'expense' AND status != 'cancelled' THEN amount ELSE 0 END) as total_expense
+    FROM movements
+    WHERE account_id = ? AND date < ?
+  `).bind(accountId, periodStart).first() as any
+
+  const account = await DB.prepare(
+    'SELECT initial_saldo FROM bank_accounts WHERE id = ?'
+  ).bind(accountId).first() as any
+
+  const initialSaldo = parseFloat(account?.initial_saldo || '0')
+  const prevIncome = parseFloat(previousDayQuery?.total_income || '0')
+  const prevExpense = parseFloat(previousDayQuery?.total_expense || '0')
+
+  const systemInitialBalance = initialSaldo + prevIncome - prevExpense
+
+  // Movimientos dentro del período
+  const periodQuery = await DB.prepare(`
+    SELECT
+      SUM(CASE WHEN type = 'income' AND status != 'cancelled' THEN amount ELSE 0 END) as total_income,
+      SUM(CASE WHEN type = 'expense' AND status != 'cancelled' THEN amount ELSE 0 END) as total_expense
+    FROM movements
+    WHERE account_id = ? AND date >= ? AND date <= ?
+  `).bind(accountId, periodStart, periodEnd).first() as any
+
+  const systemTotalIncome = parseFloat(periodQuery?.total_income || '0')
+  const systemTotalExpense = parseFloat(periodQuery?.total_expense || '0')
+
+  const systemFinalBalance = systemInitialBalance + systemTotalIncome - systemTotalExpense
+
+  return {
+    systemInitialBalance,
+    systemTotalIncome,
+    systemTotalExpense,
+    systemFinalBalance
+  }
+}
+
+// Función helper: Generar sugerencias de conciliación
+function generateReconciliationSuggestions(
+  balanceDiff: number,
+  incomeDiff: number,
+  expenseDiff: number
+): string[] {
+  const suggestions: string[] = []
+
+  if (Math.abs(balanceDiff) < 1) {
+    suggestions.push('✅ Estado de cuenta conciliado correctamente')
+    return suggestions
+  }
+
+  if (Math.abs(balanceDiff) > 1) {
+    suggestions.push(`⚠️ Diferencia de saldo: $${Math.abs(balanceDiff).toFixed(2)}`)
+  }
+
+  if (Math.abs(incomeDiff) > 1) {
+    if (incomeDiff > 0) {
+      suggestions.push(
+        `💡 El banco reporta $${incomeDiff.toFixed(2)} MÁS en ingresos - ` +
+        `Revisa si falta registrar algún depósito`
+      )
+    } else {
+      suggestions.push(
+        `💡 El sistema tiene $${Math.abs(incomeDiff).toFixed(2)} MÁS en ingresos - ` +
+        `Revisa si hay movimientos duplicados`
+      )
+    }
+  }
+
+  if (Math.abs(expenseDiff) > 1) {
+    if (expenseDiff > 0) {
+      suggestions.push(
+        `💡 El banco reporta $${expenseDiff.toFixed(2)} MÁS en egresos - ` +
+        `Revisa si falta registrar algún cargo`
+      )
+    } else {
+      suggestions.push(
+        `💡 El sistema tiene $${Math.abs(expenseDiff).toFixed(2)} MÁS en egresos - ` +
+        `Revisa si hay movimientos duplicados`
+      )
+    }
+  }
+
+  return suggestions
+}
+
+// POST /api/bank-statements/upload
+app.post('/api/bank-statements/upload', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const body = await c.req.parseBody()
+
+    const file = body['file'] as File
+    const accountId = body['account_id'] as string
+    const year = parseInt(body['year'] as string)
+    const month = parseInt(body['month'] as string)
+    const periodStart = body['period_start'] as string
+    const periodEnd = body['period_end'] as string
+
+    // Datos del banco (opcionales - pueden ingresarse después)
+    const bankInitialBalance = body['bank_initial_balance'] ?
+      parseFloat(body['bank_initial_balance'] as string) : null
+    const bankFinalBalance = body['bank_final_balance'] ?
+      parseFloat(body['bank_final_balance'] as string) : null
+    const bankTotalIncome = body['bank_total_income'] ?
+      parseFloat(body['bank_total_income'] as string) : null
+    const bankTotalExpense = body['bank_total_expense'] ?
+      parseFloat(body['bank_total_expense'] as string) : null
+
+    if (!file || !accountId || !year || !month || !periodStart || !periodEnd) {
+      return c.json({ error: 'Faltan parámetros requeridos' }, 400)
+    }
+
+    if (month < 1 || month > 12) {
+      return c.json({ error: 'Mes debe estar entre 1 y 12' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Verificar que la cuenta pertenece al usuario
+    const account = await DB.prepare(`
+      SELECT a.id, a.name, c.name as company_name
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(accountId, user.userId).first()
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    // Verificar si ya existe un estado de cuenta para ese mes
+    const existing = await DB.prepare(
+      'SELECT id FROM bank_statements WHERE account_id = ? AND year = ? AND month = ?'
+    ).bind(accountId, year, month).first()
+
+    if (existing) {
+      return c.json({
+        error: `Ya existe un estado de cuenta para ${month}/${year}`
+      }, 400)
+    }
+
+    // Por ahora guardamos la URL como el nombre del archivo
+    // En producción, esto subiría a R2/S3
+    const fileUrl = `/uploads/bank-statements/${accountId}/${year}/${month}/${file.name}`
+    const statementId = generateId()
+
+    // Calcular saldos del sistema para ese período
+    const systemData = await calculateSystemBalanceForPeriod(
+      DB,
+      accountId,
+      periodStart,
+      periodEnd
+    )
+
+    // Calcular diferencias si se proporcionaron datos del banco
+    let balanceDifference = null
+    let isReconciled = 0
+
+    if (bankFinalBalance !== null && systemData.systemFinalBalance !== null) {
+      balanceDifference = bankFinalBalance - systemData.systemFinalBalance
+      isReconciled = Math.abs(balanceDifference) < 1 ? 1 : 0
+    }
+
+    // Crear registro de estado de cuenta
+    await DB.prepare(`
+      INSERT INTO bank_statements (
+        id, account_id, year, month, period_start, period_end,
+        file_name, file_url, file_type, file_size,
+        bank_initial_balance, bank_final_balance,
+        bank_total_income, bank_total_expense,
+        system_initial_balance, system_final_balance,
+        system_total_income, system_total_expense,
+        is_reconciled, balance_difference,
+        uploaded_by, uploaded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      statementId,
+      accountId,
+      year,
+      month,
+      periodStart,
+      periodEnd,
+      file.name,
+      fileUrl,
+      file.type || 'application/pdf',
+      file.size || 0,
+      bankInitialBalance,
+      bankFinalBalance,
+      bankTotalIncome,
+      bankTotalExpense,
+      systemData.systemInitialBalance,
+      systemData.systemFinalBalance,
+      systemData.systemTotalIncome,
+      systemData.systemTotalExpense,
+      isReconciled,
+      balanceDifference,
+      user.userId
+    ).run()
+
+    const statement = await DB.prepare(
+      'SELECT * FROM bank_statements WHERE id = ?'
+    ).bind(statementId).first()
+
+    return c.json({
+      success: true,
+      statement,
+      is_reconciled: isReconciled === 1,
+      balance_difference: balanceDifference
+    })
+
+  } catch (error: any) {
+    console.error('Error en upload:', error)
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/bank-statements
+app.get('/api/bank-statements', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const accountId = c.req.query('account_id')
+    const year = c.req.query('year')
+    const month = c.req.query('month')
+
+    const DB = c.env.DB
+
+    let query = `
+      SELECT
+        bs.*,
+        a.name as account_name,
+        c.name as company_name
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE c.user_id = ?
+    `
+    const params: any[] = [user.userId]
+
+    if (accountId) {
+      query += ' AND bs.account_id = ?'
+      params.push(accountId)
+    }
+
+    if (year) {
+      query += ' AND bs.year = ?'
+      params.push(parseInt(year))
+    }
+
+    if (month) {
+      query += ' AND bs.month = ?'
+      params.push(parseInt(month))
+    }
+
+    query += ' ORDER BY bs.year DESC, bs.month DESC'
+
+    const statements = await DB.prepare(query).bind(...params).all()
+
+    return c.json({ statements: statements.results })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/bank-statements/:id
+app.get('/api/bank-statements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const statementId = c.req.param('id')
+    const DB = c.env.DB
+
+    const statement = await DB.prepare(`
+      SELECT
+        bs.*,
+        a.name as account_name,
+        c.name as company_name
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE bs.id = ? AND c.user_id = ?
+    `).bind(statementId, user.userId).first()
+
+    if (!statement) {
+      return c.json({ error: 'Estado de cuenta no encontrado' }, 404)
+    }
+
+    return c.json({ statement })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/bank-statements/:id/comparison
+app.get('/api/bank-statements/:id/comparison', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const statementId = c.req.param('id')
+    const DB = c.env.DB
+
+    const statement = await DB.prepare(`
+      SELECT
+        bs.*,
+        a.name as account_name,
+        c.name as company_name
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE bs.id = ? AND c.user_id = ?
+    `).bind(statementId, user.userId).first() as any
+
+    if (!statement) {
+      return c.json({ error: 'Estado de cuenta no encontrado' }, 404)
+    }
+
+    // Calcular diferencias
+    const initialDiff = statement.bank_initial_balance !== null && statement.system_initial_balance !== null
+      ? parseFloat(statement.bank_initial_balance) - parseFloat(statement.system_initial_balance)
+      : null
+
+    const finalDiff = statement.bank_final_balance !== null && statement.system_final_balance !== null
+      ? parseFloat(statement.bank_final_balance) - parseFloat(statement.system_final_balance)
+      : null
+
+    const incomeDiff = statement.bank_total_income !== null && statement.system_total_income !== null
+      ? parseFloat(statement.bank_total_income) - parseFloat(statement.system_total_income)
+      : null
+
+    const expenseDiff = statement.bank_total_expense !== null && statement.system_total_expense !== null
+      ? parseFloat(statement.bank_total_expense) - parseFloat(statement.system_total_expense)
+      : null
+
+    // Generar sugerencias
+    const suggestions = generateReconciliationSuggestions(
+      finalDiff || 0,
+      incomeDiff || 0,
+      expenseDiff || 0
+    )
+
+    // Obtener movimientos no conciliados del período
+    const unreconciled = await DB.prepare(`
+      SELECT * FROM movements
+      WHERE account_id = ?
+        AND date >= ?
+        AND date <= ?
+        AND (is_bank_matched = 0 OR bank_statement_id IS NULL)
+        AND status != 'cancelled'
+      ORDER BY date ASC
+    `).bind(
+      statement.account_id,
+      statement.period_start,
+      statement.period_end
+    ).all()
+
+    return c.json({
+      statement,
+      comparison: {
+        initial_balance: {
+          bank: statement.bank_initial_balance,
+          system: statement.system_initial_balance,
+          difference: initialDiff,
+          matches: initialDiff !== null && Math.abs(initialDiff) < 1
+        },
+        final_balance: {
+          bank: statement.bank_final_balance,
+          system: statement.system_final_balance,
+          difference: finalDiff,
+          matches: finalDiff !== null && Math.abs(finalDiff) < 1
+        },
+        income: {
+          bank: statement.bank_total_income,
+          system: statement.system_total_income,
+          difference: incomeDiff,
+          matches: incomeDiff !== null && Math.abs(incomeDiff) < 1
+        },
+        expense: {
+          bank: statement.bank_total_expense,
+          system: statement.system_total_expense,
+          difference: expenseDiff,
+          matches: expenseDiff !== null && Math.abs(expenseDiff) < 1
+        }
+      },
+      suggestions,
+      unreconciled_movements: unreconciled.results,
+      unreconciled_count: unreconciled.results.length
+    })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// POST /api/bank-statements/:id/reconcile
+app.post('/api/bank-statements/:id/reconcile', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const statementId = c.req.param('id')
+    const { force } = await c.req.json()
+
+    const DB = c.env.DB
+
+    const statement = await DB.prepare(`
+      SELECT bs.*, a.id as account_id
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE bs.id = ? AND c.user_id = ?
+    `).bind(statementId, user.userId).first() as any
+
+    if (!statement) {
+      return c.json({ error: 'Estado de cuenta no encontrado' }, 404)
+    }
+
+    // Si force=true, marcar como conciliado aunque haya diferencias
+    // Si no, solo marcar si la diferencia es < $1
+    const canReconcile = force || (
+      statement.balance_difference !== null &&
+      Math.abs(parseFloat(statement.balance_difference)) < 1
+    )
+
+    if (!canReconcile) {
+      return c.json({
+        error: 'No se puede conciliar. Hay diferencias mayores a $1. Use force=true para forzar.'
+      }, 400)
+    }
+
+    await DB.prepare(`
+      UPDATE bank_statements
+      SET is_reconciled = 1,
+          reconciled_at = CURRENT_TIMESTAMP,
+          reconciled_by = ?
+      WHERE id = ?
+    `).bind(user.userId, statementId).run()
+
+    // Marcar movimientos del período como conciliados
+    await DB.prepare(`
+      UPDATE movements
+      SET bank_statement_id = ?,
+          is_bank_matched = 1
+      WHERE account_id = ?
+        AND date >= ?
+        AND date <= ?
+        AND status != 'cancelled'
+    `).bind(
+      statementId,
+      statement.account_id,
+      statement.period_start,
+      statement.period_end
+    ).run()
+
+    return c.json({ success: true, message: 'Estado de cuenta conciliado' })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// PUT /api/bank-statements/:id
+app.put('/api/bank-statements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const statementId = c.req.param('id')
+    const {
+      bank_initial_balance,
+      bank_final_balance,
+      bank_total_income,
+      bank_total_expense,
+      notes
+    } = await c.req.json()
+
+    const DB = c.env.DB
+
+    const statement = await DB.prepare(`
+      SELECT bs.*, a.id as account_id
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE bs.id = ? AND c.user_id = ?
+    `).bind(statementId, user.userId).first() as any
+
+    if (!statement) {
+      return c.json({ error: 'Estado de cuenta no encontrado' }, 404)
+    }
+
+    // Recalcular diferencia de saldo
+    let balanceDifference = null
+    let isReconciled = 0
+
+    if (bank_final_balance !== undefined && statement.system_final_balance !== null) {
+      balanceDifference = parseFloat(bank_final_balance) - parseFloat(statement.system_final_balance)
+      isReconciled = Math.abs(balanceDifference) < 1 ? 1 : 0
+    }
+
+    await DB.prepare(`
+      UPDATE bank_statements
+      SET bank_initial_balance = ?,
+          bank_final_balance = ?,
+          bank_total_income = ?,
+          bank_total_expense = ?,
+          balance_difference = ?,
+          is_reconciled = ?,
+          notes = ?
+      WHERE id = ?
+    `).bind(
+      bank_initial_balance !== undefined ? bank_initial_balance : statement.bank_initial_balance,
+      bank_final_balance !== undefined ? bank_final_balance : statement.bank_final_balance,
+      bank_total_income !== undefined ? bank_total_income : statement.bank_total_income,
+      bank_total_expense !== undefined ? bank_total_expense : statement.bank_total_expense,
+      balanceDifference,
+      isReconciled,
+      notes !== undefined ? notes : statement.notes,
+      statementId
+    ).run()
+
+    const updated = await DB.prepare(
+      'SELECT * FROM bank_statements WHERE id = ?'
+    ).bind(statementId).first()
+
+    return c.json({ success: true, statement: updated })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/bank-statements/calendar/:year
+app.get('/api/bank-statements/calendar/:year', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const year = parseInt(c.req.param('year'))
+    const accountId = c.req.query('account_id')
+
+    if (!accountId) {
+      return c.json({ error: 'account_id es requerido' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Verificar que la cuenta pertenece al usuario
+    const account = await DB.prepare(`
+      SELECT a.id
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(accountId, user.userId).first()
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    // Obtener todos los estados de cuenta del año
+    const statements = await DB.prepare(`
+      SELECT * FROM bank_statements
+      WHERE account_id = ? AND year = ?
+      ORDER BY month ASC
+    `).bind(accountId, year).all()
+
+    // Crear calendario de 12 meses
+    const calendar = []
+    for (let month = 1; month <= 12; month++) {
+      const statement = (statements.results as any[]).find(s => s.month === month)
+
+      if (statement) {
+        calendar.push({
+          month,
+          has_statement: true,
+          is_reconciled: statement.is_reconciled === 1,
+          has_differences: statement.balance_difference !== null &&
+            Math.abs(parseFloat(statement.balance_difference)) >= 1,
+          balance_difference: statement.balance_difference,
+          statement_id: statement.id
+        })
+      } else {
+        calendar.push({
+          month,
+          has_statement: false,
+          is_reconciled: false,
+          has_differences: false,
+          balance_difference: null,
+          statement_id: null
+        })
+      }
+    }
+
+    return c.json({ year, account_id: accountId, calendar })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// DELETE /api/bank-statements/:id
+app.delete('/api/bank-statements/:id', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const statementId = c.req.param('id')
+    const DB = c.env.DB
+
+    const statement = await DB.prepare(`
+      SELECT bs.id
+      FROM bank_statements bs
+      JOIN bank_accounts a ON bs.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE bs.id = ? AND c.user_id = ?
+    `).bind(statementId, user.userId).first()
+
+    if (!statement) {
+      return c.json({ error: 'Estado de cuenta no encontrado' }, 404)
+    }
+
+    // Desmarcar movimientos vinculados
+    await DB.prepare(`
+      UPDATE movements
+      SET bank_statement_id = NULL,
+          is_bank_matched = 0
+      WHERE bank_statement_id = ?
+    `).bind(statementId).run()
+
+    // Eliminar estado de cuenta
+    await DB.prepare(
+      'DELETE FROM bank_statements WHERE id = ?'
+    ).bind(statementId).run()
+
+    return c.json({ success: true })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
 // FRONTEND - HTML
 // ============================================
 
