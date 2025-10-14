@@ -1,0 +1,38 @@
+{
+  "name": "lyra-financial-system",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:d1": "wrangler pages dev dist --d1=lyra-db --local --ip 0.0.0.0 --port 3000",
+    "dev:d1:remote": "wrangler pages dev dist --d1=lyra-db --persist-to=.wrangler/state/remote --ip 0.0.0.0 --port 3000",
+    "build:css": "tailwindcss -i ./src/styles.css -o ./public/static/styles.css --watch",
+    "build": "npm run build:css:prod && vite build && cp dist/_worker.js public/ && cp dist/_routes.json public/",
+    "build:css:prod": "npx tailwindcss -i ./src/styles.css -o ./public/static/styles.css --minify",
+    "preview": "wrangler pages dev dist",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name lyra-financial-system --commit-dirty=true",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:migrate:local": "wrangler d1 migrations apply lyra-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply lyra-db",
+    "db:console:local": "wrangler d1 execute lyra-db --local",
+    "db:console:prod": "wrangler d1 execute lyra-db",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",
+    "git:init": "git init && git add . && git commit -m 'Initial commit'",
+    "git:commit": "git add . && git commit -m",
+    "git:status": "git status"
+  },
+  "dependencies": {
+    "hono": "^4.9.8"
+  },
+  "devDependencies": {
+    "@hono/vite-build": "^1.2.0",
+    "@hono/vite-dev-server": "^0.18.2",
+    "@tailwindcss/typography": "^0.5.18",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5",
+    "wrangler": "^4.4.0"
+  }
+}

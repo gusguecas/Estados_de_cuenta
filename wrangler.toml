@@ -1,0 +1,14 @@
+name = "lyra-financial-system"
+compatibility_date = "2025-10-14"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lyra-db"
+database_id = "4ac0788b-d3e9-4667-be39-097a71a46991"
+
+# Opcional: Configuración de R2 para almacenar archivos (Excel, PDFs)
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "lyra-files"
