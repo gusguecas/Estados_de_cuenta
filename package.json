@@ -22,7 +22,8 @@
     "git:status": "git status"
   },
   "dependencies": {
-    "hono": "^4.9.8"
+    "hono": "^4.9.8",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@hono/vite-build": "^1.2.0",

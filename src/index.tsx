@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import * as XLSX from 'xlsx'
 
 type Bindings = {
   DB: D1Database;
@@ -173,12 +174,12 @@ app.post('/api/auth/register', async (c) => {
     // Crear categorías predefinidas para el usuario
     const categories = [
       { name: 'Ventas', type: 'income', color: '#10B981', icon: '💰' },
-      { name: 'Servicios', type: 'income', color: '#34D399', icon: '🛠️' },
+      { name: 'Servicios Prestados', type: 'income', color: '#34D399', icon: '🛠️' },
       { name: 'Inversiones', type: 'income', color: '#6EE7B7', icon: '📈' },
       { name: 'Otros Ingresos', type: 'income', color: '#A7F3D0', icon: '💵' },
       { name: 'Nómina', type: 'expense', color: '#EF4444', icon: '👥' },
       { name: 'Renta', type: 'expense', color: '#F87171', icon: '🏢' },
-      { name: 'Servicios', type: 'expense', color: '#FCA5A5', icon: '💡' },
+      { name: 'Servicios Públicos', type: 'expense', color: '#FCA5A5', icon: '💡' },
       { name: 'Compras', type: 'expense', color: '#FEE2E2', icon: '🛒' },
       { name: 'Impuestos', type: 'expense', color: '#DC2626', icon: '🏛️' },
       { name: 'Marketing', type: 'expense', color: '#FB923C', icon: '📢' },
@@ -1017,6 +1018,758 @@ app.get('/api/dashboard/summary', authMiddleware, async (c) => {
       },
       recentMovements: recentMovements.results
     })
+
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// ============================================
+// ENDPOINTS - IMPORTACIÓN/EXPORTACIÓN EXCEL
+// ============================================
+
+// Mapeo de columnas posibles
+const COLUMN_MAPPINGS: Record<string, string> = {
+  'Fecha': 'date',
+  'FECHA': 'date',
+  'Date': 'date',
+  'Dia': 'date',
+  'día': 'date',
+  'No. Cheque': 'reference',
+  'No.Cheque': 'reference',
+  'Cheque': 'reference',
+  'Referencia': 'reference',
+  'Ref': 'reference',
+  'REF': 'reference',
+  'Nombre': 'name',
+  'NOMBRE': 'name',
+  'Beneficiario': 'name',
+  'Cliente': 'name',
+  'Proveedor': 'name',
+  'Descripción': 'description',
+  'Descripcion': 'description',
+  'DESCRIPCIÓN': 'description',
+  'Concepto': 'description',
+  'Detalle': 'description',
+  'Entrada': 'income',
+  'ENTRADA': 'income',
+  'Ingreso': 'income',
+  'Ingresos': 'income',
+  'Depósito': 'income',
+  'Deposito': 'income',
+  'Cargo': 'income',
+  'Salida': 'expense',
+  'SALIDA': 'expense',
+  'Egreso': 'expense',
+  'Egresos': 'expense',
+  'Retiro': 'expense',
+  'Pago': 'expense',
+  'Abono': 'expense',
+  'Saldo': 'balance',
+  'SALDO': 'balance',
+  'Balance': 'balance',
+  'Comentarios': 'comments',
+  'COMENTARIOS': 'comments',
+  'Notas': 'comments',
+  'Observaciones': 'comments'
+}
+
+// Función helper: Parsear número
+function parseNumber(value: any): number {
+  if (typeof value === 'number') return value
+  if (!value) return 0
+
+  const cleaned = value.toString()
+    .replace(/[$,]/g, '')
+    .trim()
+
+  return parseFloat(cleaned) || 0
+}
+
+// Función helper: Parsear fecha
+function parseDate(value: any): string {
+  if (!value) return ''
+
+  // Si ya es un Date de Excel (número de serie)
+  if (typeof value === 'number') {
+    const date = XLSX.SSF.parse_date_code(value)
+    return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`
+  }
+
+  // Si es string, intentar parsear
+  const str = value.toString().trim()
+
+  // Formato DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+    const [day, month, year] = str.split('/')
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
+  // Formato YYYY-MM-DD (ya está bien)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str
+  }
+
+  // Intentar con Date nativo
+  const date = new Date(str)
+  if (!isNaN(date.getTime())) {
+    return date.toISOString().split('T')[0]
+  }
+
+  return str
+}
+
+// Función helper: Encontrar mejor coincidencia de columna
+function findBestMatch(header: string, mappings: Record<string, string>): string | null {
+  // Coincidencia exacta
+  if (mappings[header]) return mappings[header]
+
+  // Sin case
+  const lower = header.toLowerCase().trim()
+  for (const [key, value] of Object.entries(mappings)) {
+    if (key.toLowerCase() === lower) return value
+  }
+
+  // Contiene
+  for (const [key, value] of Object.entries(mappings)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
+      return value
+    }
+  }
+
+  return null
+}
+
+// Función helper: Obtener valor desde mapeo
+function getValueFromMapping(row: any, mapping: Record<string, string>, field: string): any {
+  for (const [excelCol, mappedField] of Object.entries(mapping)) {
+    if (mappedField === field) {
+      return row[excelCol]
+    }
+  }
+  return null
+}
+
+// Función: Detectar estructura del Excel
+function detectStructure(data: any[]) {
+  if (data.length === 0) {
+    throw new Error('Excel vacío')
+  }
+
+  const firstRow = data[0]
+  const headers = Object.keys(firstRow)
+
+  // Detectar mapeo de columnas
+  const columnMapping: Record<string, string> = {}
+
+  for (const header of headers) {
+    const mapped = findBestMatch(header, COLUMN_MAPPINGS)
+    if (mapped) {
+      columnMapping[header] = mapped
+    }
+  }
+
+  // Validar que tenga columnas mínimas
+  const hasDate = Object.values(columnMapping).includes('date')
+  const hasName = Object.values(columnMapping).includes('name')
+  const hasAmount = Object.values(columnMapping).includes('income') ||
+                    Object.values(columnMapping).includes('expense')
+
+  if (!hasDate || !hasName || !hasAmount) {
+    throw new Error('Excel no tiene las columnas requeridas (Fecha, Nombre, Entrada/Salida)')
+  }
+
+  // Detectar saldo inicial
+  let initialBalance = 0
+  const hasBalance = Object.values(columnMapping).includes('balance')
+
+  if (hasBalance && data[0]) {
+    const firstSaldo = parseNumber(getValueFromMapping(data[0], columnMapping, 'balance'))
+    const firstIncome = parseNumber(getValueFromMapping(data[0], columnMapping, 'income'))
+    const firstExpense = parseNumber(getValueFromMapping(data[0], columnMapping, 'expense'))
+
+    if (firstIncome) {
+      initialBalance = firstSaldo - firstIncome
+    } else if (firstExpense) {
+      initialBalance = firstSaldo + firstExpense
+    } else {
+      initialBalance = firstSaldo
+    }
+  }
+
+  return {
+    columnMapping,
+    initialBalance,
+    totalRows: data.length,
+    hasBalance
+  }
+}
+
+// Función: Validar datos del Excel
+function validateData(data: any[], structure: any) {
+  const errors: string[] = []
+  const warnings: string[] = []
+  let validRows = 0
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i]
+    const rowNum = i + 2 // Excel empieza en 1 + header
+
+    // Validar fecha
+    const fecha = getValueFromMapping(row, structure.columnMapping, 'date')
+    if (!fecha) {
+      errors.push(`Fila ${rowNum}: Fecha vacía`)
+      continue
+    }
+
+    const fechaParsed = parseDate(fecha)
+    if (!fechaParsed || fechaParsed === fecha.toString()) {
+      errors.push(`Fila ${rowNum}: Fecha inválida (${fecha})`)
+      continue
+    }
+
+    // Validar que tenga entrada O salida
+    const entrada = parseNumber(getValueFromMapping(row, structure.columnMapping, 'income'))
+    const salida = parseNumber(getValueFromMapping(row, structure.columnMapping, 'expense'))
+
+    if (!entrada && !salida) {
+      errors.push(`Fila ${rowNum}: No tiene entrada ni salida`)
+      continue
+    }
+
+    if (entrada && salida) {
+      errors.push(`Fila ${rowNum}: Tiene entrada Y salida (debe ser solo una)`)
+      continue
+    }
+
+    // Validar nombre
+    const nombre = getValueFromMapping(row, structure.columnMapping, 'name')
+    if (!nombre?.toString().trim()) {
+      warnings.push(`Fila ${rowNum}: Sin nombre`)
+    }
+
+    validRows++
+  }
+
+  // Calcular saldo final
+  let calculatedBalance = structure.initialBalance
+  for (const row of data) {
+    const income = parseNumber(getValueFromMapping(row, structure.columnMapping, 'income'))
+    const expense = parseNumber(getValueFromMapping(row, structure.columnMapping, 'expense'))
+    calculatedBalance += income - expense
+  }
+
+  // Validar saldo final si existe columna de saldo
+  let balanceMatches = true
+  if (structure.hasBalance && data.length > 0) {
+    const lastBalance = parseNumber(getValueFromMapping(data[data.length - 1], structure.columnMapping, 'balance'))
+    const diff = Math.abs(calculatedBalance - lastBalance)
+    balanceMatches = diff < 1
+
+    if (!balanceMatches) {
+      errors.push(
+        `Saldo no cuadra. Calculado: $${calculatedBalance.toFixed(2)}, ` +
+        `Excel: $${lastBalance.toFixed(2)} (diferencia: $${diff.toFixed(2)})`
+      )
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    validRows,
+    balanceMatches,
+    calculatedBalance
+  }
+}
+
+// POST /api/import/preview
+app.post('/api/import/preview', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const body = await c.req.parseBody()
+
+    const file = body['file'] as File
+    const accountId = body['account_id'] as string
+
+    if (!file) {
+      return c.json({ error: 'No se proporcionó archivo' }, 400)
+    }
+
+    if (!accountId) {
+      return c.json({ error: 'account_id es requerido' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Verificar que la cuenta pertenece al usuario
+    const account = await DB.prepare(`
+      SELECT a.id, a.name, a.initial_saldo, c.name as company_name
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(accountId, user.userId).first()
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    // Leer Excel
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const sheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[sheetName]
+    const data = XLSX.utils.sheet_to_json(worksheet)
+
+    if (data.length === 0) {
+      return c.json({ error: 'Excel vacío' }, 400)
+    }
+
+    // Detectar estructura
+    const structure = detectStructure(data)
+
+    // Validar datos
+    const validation = validateData(data, structure)
+
+    // Calcular estadísticas
+    let totalIncome = 0
+    let totalExpense = 0
+
+    for (const row of data) {
+      const income = parseNumber(getValueFromMapping(row, structure.columnMapping, 'income'))
+      const expense = parseNumber(getValueFromMapping(row, structure.columnMapping, 'expense'))
+      totalIncome += income
+      totalExpense += expense
+    }
+
+    const finalBalance = structure.initialBalance + totalIncome - totalExpense
+
+    return c.json({
+      success: true,
+      account: {
+        id: account.id,
+        name: account.name,
+        company_name: account.company_name
+      },
+      structure: {
+        columnMapping: structure.columnMapping,
+        totalRows: structure.totalRows,
+        hasBalance: structure.hasBalance
+      },
+      validation: {
+        valid: validation.valid,
+        errors: validation.errors,
+        warnings: validation.warnings,
+        validRows: validation.validRows,
+        balanceMatches: validation.balanceMatches
+      },
+      stats: {
+        initialBalance: structure.initialBalance,
+        totalIncome,
+        totalExpense,
+        finalBalance,
+        expectedFinalBalance: validation.calculatedBalance
+      },
+      sampleRows: data.slice(0, 5).map((row: any) => ({
+        date: parseDate(getValueFromMapping(row, structure.columnMapping, 'date')),
+        name: getValueFromMapping(row, structure.columnMapping, 'name'),
+        income: parseNumber(getValueFromMapping(row, structure.columnMapping, 'income')),
+        expense: parseNumber(getValueFromMapping(row, structure.columnMapping, 'expense')),
+        balance: parseNumber(getValueFromMapping(row, structure.columnMapping, 'balance')),
+        reference: getValueFromMapping(row, structure.columnMapping, 'reference'),
+        description: getValueFromMapping(row, structure.columnMapping, 'description')
+      }))
+    })
+
+  } catch (error: any) {
+    console.error('Error en preview:', error)
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// POST /api/import/execute
+app.post('/api/import/execute', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const body = await c.req.parseBody()
+
+    const file = body['file'] as File
+    const accountId = body['account_id'] as string
+    const skipDuplicates = body['skip_duplicates'] === 'true'
+    const updateInitialBalance = body['update_initial_balance'] === 'true'
+
+    if (!file || !accountId) {
+      return c.json({ error: 'Faltan parámetros' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Verificar cuenta
+    const account = await DB.prepare(`
+      SELECT a.id
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(accountId, user.userId).first()
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    // Leer Excel
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]])
+
+    // Detectar estructura y validar
+    const structure = detectStructure(data)
+    const validation = validateData(data, structure)
+
+    if (!validation.valid) {
+      return c.json({
+        error: 'Datos inválidos',
+        errors: validation.errors
+      }, 400)
+    }
+
+    // Crear registro de importación
+    const importId = generateId()
+
+    await DB.prepare(`
+      INSERT INTO imports (
+        id, user_id, account_id, file_name, file_url, file_size,
+        import_type, status, total_rows, initial_balance,
+        column_mapping, started_at
+      ) VALUES (?, ?, ?, ?, '', ?, 'initial', 'processing', ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      importId,
+      user.userId,
+      accountId,
+      file.name,
+      file.size || 0,
+      data.length,
+      structure.initialBalance,
+      JSON.stringify(structure.columnMapping)
+    ).run()
+
+    // Actualizar saldo inicial si se solicitó
+    if (updateInitialBalance && structure.initialBalance !== 0) {
+      await DB.prepare(
+        'UPDATE bank_accounts SET initial_saldo = ? WHERE id = ?'
+      ).bind(structure.initialBalance, accountId).run()
+    }
+
+    // Procesar cada fila
+    let imported = 0, updated = 0, skipped = 0, errors = 0
+    const errorDetails: any[] = []
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i]
+      const rowNum = i + 2
+
+      try {
+        const fecha = parseDate(getValueFromMapping(row, structure.columnMapping, 'date'))
+        const entrada = parseNumber(getValueFromMapping(row, structure.columnMapping, 'income'))
+        const salida = parseNumber(getValueFromMapping(row, structure.columnMapping, 'expense'))
+
+        if (!entrada && !salida) {
+          skipped++
+          continue
+        }
+
+        const movement = {
+          account_id: accountId,
+          date: fecha,
+          type: entrada ? 'income' : 'expense',
+          amount: entrada || salida,
+          reference: getValueFromMapping(row, structure.columnMapping, 'reference') || '',
+          name: getValueFromMapping(row, structure.columnMapping, 'name') || '',
+          description: getValueFromMapping(row, structure.columnMapping, 'description') || '',
+          comments: getValueFromMapping(row, structure.columnMapping, 'comments') || '',
+          status: 'completed',
+          import_id: importId,
+          created_by: user.userId
+        }
+
+        // Verificar duplicados
+        if (skipDuplicates) {
+          const existing = await DB.prepare(`
+            SELECT id FROM movements
+            WHERE account_id = ? AND date = ? AND amount = ? AND type = ?
+              AND name LIKE ?
+            LIMIT 1
+          `).bind(
+            movement.account_id,
+            movement.date,
+            movement.amount,
+            movement.type,
+            `%${movement.name}%`
+          ).first()
+
+          if (existing) {
+            skipped++
+            continue
+          }
+        }
+
+        // Crear movimiento
+        const movementId = generateId()
+        await DB.prepare(`
+          INSERT INTO movements (
+            id, account_id, date, type, amount, reference, name,
+            description, comments, status, import_id, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          movementId,
+          movement.account_id,
+          movement.date,
+          movement.type,
+          movement.amount,
+          movement.reference,
+          movement.name,
+          movement.description,
+          movement.comments,
+          movement.status,
+          movement.import_id,
+          movement.created_by
+        ).run()
+
+        // Crear import_row
+        await DB.prepare(`
+          INSERT INTO import_rows (
+            id, import_id, row_number, original_data, status, movement_id
+          ) VALUES (?, ?, ?, ?, 'imported', ?)
+        `).bind(
+          generateId(),
+          importId,
+          rowNum,
+          JSON.stringify(row),
+          movementId
+        ).run()
+
+        imported++
+
+      } catch (error: any) {
+        errors++
+        errorDetails.push({ row: rowNum, error: error.message })
+
+        await DB.prepare(`
+          INSERT INTO import_rows (
+            id, import_id, row_number, original_data, status, error_message
+          ) VALUES (?, ?, ?, ?, 'error', ?)
+        `).bind(
+          generateId(),
+          importId,
+          rowNum,
+          JSON.stringify(row),
+          error.message
+        ).run()
+      }
+    }
+
+    // Calcular saldo final
+    const finalBalance = await calculateBalance(DB, accountId)
+
+    // Actualizar import record
+    await DB.prepare(`
+      UPDATE imports
+      SET status = ?, rows_imported = ?, rows_updated = ?, rows_skipped = ?,
+          rows_error = ?, final_balance = ?, expected_final_balance = ?,
+          balance_matches = ?, errors = ?, completed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      errors > 0 ? 'partial' : 'completed',
+      imported,
+      updated,
+      skipped,
+      errors,
+      finalBalance,
+      validation.calculatedBalance,
+      Math.abs(finalBalance - validation.calculatedBalance) < 1 ? 1 : 0,
+      JSON.stringify(errorDetails),
+      importId
+    ).run()
+
+    return c.json({
+      success: true,
+      import_id: importId,
+      results: {
+        total: data.length,
+        imported,
+        updated,
+        skipped,
+        errors,
+        finalBalance,
+        expectedFinalBalance: validation.calculatedBalance,
+        balanceMatches: Math.abs(finalBalance - validation.calculatedBalance) < 1
+      },
+      errorDetails: errors > 0 ? errorDetails : undefined
+    })
+
+  } catch (error: any) {
+    console.error('Error en execute:', error)
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// POST /api/export
+app.post('/api/export', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const { account_id, from, to } = await c.req.json()
+
+    if (!account_id) {
+      return c.json({ error: 'account_id es requerido' }, 400)
+    }
+
+    const DB = c.env.DB
+
+    // Obtener cuenta
+    const account = await DB.prepare(`
+      SELECT a.*, c.name as company_name
+      FROM bank_accounts a
+      JOIN companies c ON a.company_id = c.id
+      WHERE a.id = ? AND c.user_id = ?
+    `).bind(account_id, user.userId).first() as any
+
+    if (!account) {
+      return c.json({ error: 'Cuenta no encontrada' }, 404)
+    }
+
+    // Obtener movimientos
+    let query = `
+      SELECT * FROM movements
+      WHERE account_id = ? AND status != 'cancelled'
+    `
+    const params: any[] = [account_id]
+
+    if (from) {
+      query += ' AND date >= ?'
+      params.push(from)
+    }
+
+    if (to) {
+      query += ' AND date <= ?'
+      params.push(to)
+    }
+
+    query += ' ORDER BY date ASC, created_at ASC'
+
+    const movements = await DB.prepare(query).bind(...params).all()
+
+    // Crear Excel
+    const data: any[] = []
+    let saldo = parseFloat(account.initial_saldo)
+
+    for (const mov of movements.results as any[]) {
+      if (mov.type === 'income') {
+        saldo += parseFloat(mov.amount)
+      } else {
+        saldo -= parseFloat(mov.amount)
+      }
+
+      data.push({
+        'Fecha': mov.date,
+        'No. Cheque': mov.reference || '',
+        'Nombre': mov.name,
+        'Descripción': mov.description || '',
+        'Entrada': mov.type === 'income' ? parseFloat(mov.amount) : '',
+        'Salida': mov.type === 'expense' ? parseFloat(mov.amount) : '',
+        'Saldo': saldo,
+        'Comentarios': mov.comments || ''
+      })
+    }
+
+    // Generar archivo Excel
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimientos')
+
+    // Convertir a buffer
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+
+    const fileName = `${account.company_name}_${account.name}_${new Date().toISOString().split('T')[0]}.xlsx`
+
+    return new Response(excelBuffer, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${fileName}"`
+      }
+    })
+
+  } catch (error: any) {
+    console.error('Error en export:', error)
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// GET /api/export/template
+app.get('/api/export/template', (c) => {
+  const data = [
+    {
+      'Fecha': '2025-10-14',
+      'No. Cheque': '001',
+      'Nombre': 'Cliente Ejemplo',
+      'Descripción': 'Pago de factura',
+      'Entrada': 5000,
+      'Salida': '',
+      'Saldo': 105000,
+      'Comentarios': 'Ejemplo de ingreso'
+    },
+    {
+      'Fecha': '2025-10-15',
+      'No. Cheque': '002',
+      'Nombre': 'Proveedor Ejemplo',
+      'Descripción': 'Compra de materiales',
+      'Entrada': '',
+      'Salida': 2500,
+      'Saldo': 102500,
+      'Comentarios': 'Ejemplo de egreso'
+    }
+  ]
+
+  const worksheet = XLSX.utils.json_to_sheet(data)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Plantilla')
+
+  const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+
+  return new Response(excelBuffer, {
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="plantilla_lyra.xlsx"'
+    }
+  })
+})
+
+// GET /api/imports/history
+app.get('/api/imports/history', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user')
+    const accountId = c.req.query('account_id')
+
+    const DB = c.env.DB
+
+    let query = `
+      SELECT i.*, a.name as account_name, c.name as company_name
+      FROM imports i
+      JOIN bank_accounts a ON i.account_id = a.id
+      JOIN companies c ON a.company_id = c.id
+      WHERE i.user_id = ?
+    `
+    const params: any[] = [user.userId]
+
+    if (accountId) {
+      query += ' AND i.account_id = ?'
+      params.push(accountId)
+    }
+
+    query += ' ORDER BY i.started_at DESC LIMIT 50'
+
+    const imports = await DB.prepare(query).bind(...params).all()
+
+    return c.json({ imports: imports.results })
 
   } catch (error: any) {
     return c.json({ error: error.message }, 500)
