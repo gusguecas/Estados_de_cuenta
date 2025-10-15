@@ -316,24 +316,72 @@ app.get('/api/companies', authMiddleware, async (c) => {
 app.post('/api/companies', authMiddleware, async (c) => {
   try {
     const user = c.get('user')
-    const { name, initial_saldo, currency, color } = await c.req.json()
+    const body = await c.req.json()
+    const {
+      name,
+      commercial_name,
+      country,
+      tax_id,
+      currency,
+      employees_count,
+      business_sector,
+      website,
+      business_description,
+      street_address,
+      city,
+      state_province,
+      postal_code,
+      phone,
+      logo_url,
+      color
+    } = body
 
+    // Validaciones
     if (!name) {
-      return c.json({ error: 'El nombre es requerido' }, 400)
+      return c.json({ error: 'La razón social es requerida' }, 400)
+    }
+    if (!commercial_name) {
+      return c.json({ error: 'El nombre comercial es requerido' }, 400)
+    }
+    if (!country) {
+      return c.json({ error: 'El país es requerido' }, 400)
+    }
+    if (!tax_id) {
+      return c.json({ error: 'El RFC/NIF es requerido' }, 400)
+    }
+    if (!currency) {
+      return c.json({ error: 'La moneda es requerida' }, 400)
     }
 
     const DB = c.env.DB
     const companyId = generateId()
 
     await DB.prepare(`
-      INSERT INTO companies (id, user_id, name, initial_saldo, currency, color, active)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO companies (
+        id, user_id, name, commercial_name, country, tax_id, currency,
+        employees_count, business_sector, website, business_description,
+        street_address, city, state_province, postal_code, phone,
+        logo_url, color, active
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).bind(
       companyId,
       user.userId,
       name,
-      initial_saldo || 0,
-      currency || 'MXN',
+      commercial_name,
+      country,
+      tax_id,
+      currency,
+      employees_count || 0,
+      business_sector,
+      website,
+      business_description,
+      street_address,
+      city,
+      state_province,
+      postal_code,
+      phone,
+      logo_url,
       color || '#3B82F6'
     ).run()
 
@@ -349,18 +397,34 @@ app.post('/api/companies', authMiddleware, async (c) => {
 })
 
 // PUT /api/companies/:id
-app.put('/api/companies/:id', authMiddleware, async (c) => {
+app.put('/api/companies/:id', async (c) => {
   try {
-    const user = c.get('user')
     const companyId = c.req.param('id')
-    const { name, initial_saldo, currency, color } = await c.req.json()
+    const {
+      name,
+      commercial_name,
+      country,
+      tax_id,
+      currency,
+      employees_count,
+      business_sector,
+      website,
+      business_description,
+      street_address,
+      city,
+      state_province,
+      postal_code,
+      phone,
+      logo_url,
+      color
+    } = await c.req.json()
 
-    const DB = c.env.DB
+    const DB = c.env.DB as D1Database
 
-    // Verificar que la empresa pertenece al usuario
+    // Verificar que la empresa existe
     const company = await DB.prepare(
-      'SELECT id FROM companies WHERE id = ? AND user_id = ?'
-    ).bind(companyId, user.userId).first()
+      'SELECT id FROM companies WHERE id = ?'
+    ).bind(companyId).first()
 
     if (!company) {
       return c.json({ error: 'Empresa no encontrada' }, 404)
@@ -368,9 +432,17 @@ app.put('/api/companies/:id', authMiddleware, async (c) => {
 
     await DB.prepare(`
       UPDATE companies
-      SET name = ?, initial_saldo = ?, currency = ?, color = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, commercial_name = ?, country = ?, tax_id = ?, currency = ?,
+          employees_count = ?, business_sector = ?, website = ?, business_description = ?,
+          street_address = ?, city = ?, state_province = ?, postal_code = ?, phone = ?,
+          logo_url = ?, color = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).bind(name, initial_saldo, currency, color, companyId).run()
+    `).bind(
+      name, commercial_name, country, tax_id, currency,
+      employees_count, business_sector, website, business_description,
+      street_address, city, state_province, postal_code, phone,
+      logo_url, color, companyId
+    ).run()
 
     const updated = await DB.prepare(
       'SELECT * FROM companies WHERE id = ?'
@@ -384,16 +456,24 @@ app.put('/api/companies/:id', authMiddleware, async (c) => {
 })
 
 // DELETE /api/companies/:id
-app.delete('/api/companies/:id', authMiddleware, async (c) => {
+app.delete('/api/companies/:id', async (c) => {
   try {
-    const user = c.get('user')
     const companyId = c.req.param('id')
-    const DB = c.env.DB
+    const DB = c.env.DB as D1Database
+
+    // Verificar que la empresa existe
+    const company = await DB.prepare(
+      'SELECT id FROM companies WHERE id = ?'
+    ).bind(companyId).first()
+
+    if (!company) {
+      return c.json({ error: 'Empresa no encontrada' }, 404)
+    }
 
     // Soft delete
     await DB.prepare(
-      'UPDATE companies SET active = 0 WHERE id = ? AND user_id = ?'
-    ).bind(companyId, user.userId).run()
+      'UPDATE companies SET active = 0 WHERE id = ?'
+    ).bind(companyId).run()
 
     return c.json({ success: true })
 
@@ -3807,105 +3887,713 @@ app.get('/api/recurring-movements/pending', authMiddleware, async (c) => {
 // ============================================
 
 app.get('/', (c) => {
-  return c.html(`
+  return c.redirect('/companies')
+})
+
+// GET /companies - Portfolio Corporativo
+app.get('/companies', async (c) => {
+  const DB = c.env.DB as D1Database
+
+  try {
+    // Obtener todas las empresas (sin filtro de usuario)
+    const companiesResult = await DB.prepare(`
+      SELECT * FROM companies
+      WHERE active = 1
+      ORDER BY created_at DESC
+    `).all()
+
+    const companies = companiesResult.results || []
+
+    // Calcular estadísticas
+    const activeCompanies = companies.length
+    const uniqueCurrencies = [...new Set(companies.map((c: any) => c.currency))]
+    const currencies = uniqueCurrencies.length
+
+    // Calcular países únicos (basado en currency)
+    const countryMap: any = {
+      'MXN': 'MX',
+      'USD': 'US',
+      'EUR': 'ES',
+      'CAD': 'CA'
+    }
+    const countries = [...new Set(companies.map((c: any) => countryMap[c.currency] || 'MX'))].length
+
+    return c.html(`
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lyra Financial System</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <title>Portfolio Corporativo - GRX Holdings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1rem;
+    }
+
+    .glass-panel:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+      transition: all 0.3s ease;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+    }
+
+    .nav-item {
+      background: rgba(255, 255, 255, 0.05);
+      transition: all 0.3s ease;
+    }
+
+    .nav-item:hover, .nav-item.active {
+      background: rgba(59, 130, 246, 0.3);
+    }
+
+    .company-logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 0.75rem;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+  </style>
 </head>
-<body class="bg-gray-50">
-  <div id="app" class="min-h-screen">
-    <div class="max-w-7xl mx-auto px-4 py-8">
-      <div class="text-center">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">
-          💼 Lyra Financial System
-        </h1>
-        <p class="text-xl text-gray-600 mb-8">
-          Sistema de gestión financiera multi-empresa
-        </p>
+<body class="text-gray-100 p-6">
+  <!-- Header con navegación -->
+  <div class="max-w-7xl mx-auto mb-8">
+    <div class="glass-panel p-6 flex items-center justify-between">
+      <div class="flex items-center space-x-8">
+        <div class="text-2xl font-bold">
+          <span class="text-blue-400">GRX</span>
+          <div class="text-xs text-gray-400">HOLDINGS</div>
+        </div>
 
-        <div class="bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto">
-          <h2 class="text-2xl font-bold mb-6">Iniciar Sesión</h2>
-
-          <form id="loginForm" class="space-y-4">
-            <div>
-              <label class="label">Email</label>
-              <input type="email" id="email" class="input" required>
-            </div>
-
-            <div>
-              <label class="label">Contraseña</label>
-              <input type="password" id="password" class="input" required>
-            </div>
-
-            <button type="submit" class="w-full btn btn-primary">
-              Entrar
-            </button>
-          </form>
-
-          <div class="mt-4">
-            <a href="/register" class="text-blue-600 hover:underline">
-              ¿No tienes cuenta? Regístrate
-            </a>
+        <nav class="flex space-x-2">
+          <a href="/" class="nav-item px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+            <span>🏠</span>
+            Dashboard
+          </a>
+          <a href="/companies" class="nav-item active px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+            <span>🏢</span>
+            Empresas
+          </a>
+          <div class="nav-item px-4 py-2 rounded-lg text-sm opacity-50 cursor-not-allowed flex items-center gap-2">
+            <span>👥</span>
+            Empleados
           </div>
+          <div class="nav-item px-4 py-2 rounded-lg text-sm opacity-50 cursor-not-allowed flex items-center gap-2">
+            <span>💰</span>
+            Gastos
+          </div>
+          <div class="nav-item px-4 py-2 rounded-lg text-sm opacity-50 cursor-not-allowed flex items-center gap-2">
+            <span>📊</span>
+            Reportes
+          </div>
+        </nav>
+      </div>
 
-          <div id="message" class="mt-4"></div>
+      <div class="flex items-center space-x-4">
+        <div class="text-right text-sm">
+          <div class="font-medium">Administrador</div>
+          <div class="text-xs text-gray-400">CFO</div>
         </div>
-
-        <div class="mt-12 bg-blue-50 rounded-lg p-6">
-          <h3 class="text-lg font-bold mb-2">Estado del Proyecto</h3>
-          <p class="text-sm text-gray-700">
-            ✅ Setup inicial completo<br>
-            ✅ Base de datos configurada<br>
-            ✅ Autenticación JWT<br>
-            ✅ CRUD Empresas<br>
-            ✅ CRUD Cuentas Bancarias<br>
-            ✅ CRUD Movimientos<br>
-            ✅ Sistema de Transferencias<br>
-            ⏳ Importación Excel (próximamente)<br>
-            ⏳ Estados de Cuenta (próximamente)
-          </p>
-        </div>
+        <button class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm transition">
+          Salir
+        </button>
       </div>
     </div>
   </div>
 
-  <script>
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault()
+  <div class="max-w-7xl mx-auto">
+    <!-- Título y botón nueva empresa -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold mb-2 flex items-center">
+          <span class="mr-3">🏛</span>
+          Portfolio Corporativo
+        </h1>
+        <p class="text-gray-400">Gestión multiempresa internacional • MX + ES + US + CA</p>
+      </div>
+      <button onclick="showNewCompanyModal()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition flex items-center space-x-2">
+        <span>+</span>
+        <span>Nueva Empresa</span>
+      </button>
+    </div>
 
-      const email = document.getElementById('email').value
-      const password = document.getElementById('password').value
+    <!-- Estadísticas -->
+    <div class="grid grid-cols-4 gap-6 mb-8">
+      <div class="glass-panel stat-card p-6 text-center">
+        <div class="text-4xl font-bold text-green-400">${activeCompanies}</div>
+        <div class="text-sm text-gray-400 mt-2">Empresas Activas</div>
+      </div>
+      <div class="glass-panel stat-card p-6 text-center">
+        <div class="text-4xl font-bold text-blue-400">0</div>
+        <div class="text-sm text-gray-400 mt-2">Empleados Totales</div>
+      </div>
+      <div class="glass-panel stat-card p-6 text-center">
+        <div class="text-4xl font-bold text-purple-400">${countries}</div>
+        <div class="text-sm text-gray-400 mt-2">Países</div>
+      </div>
+      <div class="glass-panel stat-card p-6 text-center">
+        <div class="text-4xl font-bold text-yellow-400">${currencies}</div>
+        <div class="text-sm text-gray-400 mt-2">Monedas</div>
+      </div>
+    </div>
+
+    <!-- Grid de empresas -->
+    <div class="grid grid-cols-2 gap-6" id="companiesGrid">
+      ${companies.map((company: any) => {
+        const countryFlags: any = {
+          'MXN': '🇲🇽',
+          'USD': '🇺🇸',
+          'EUR': '🇪🇸',
+          'CAD': '🇨🇦'
+        }
+        const flag = countryFlags[company.currency] || '🌐'
+        const currencySymbol = company.currency === 'USD' ? '$' : company.currency === 'EUR' ? '€' : '$'
+
+        return `
+        <div class="glass-panel p-6">
+          <div class="flex items-start space-x-4 mb-4">
+            <div class="company-logo flex-shrink-0">
+              ${company.logo_url ?
+                `<img src="${company.logo_url}" alt="${company.name}" class="w-full h-full object-contain rounded-lg" />` :
+                `<span class="text-4xl text-gray-800">${company.name.charAt(0)}</span>`
+              }
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-1">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                  ${company.name}
+                  <span class="text-base">${flag}</span>
+                </h3>
+                <span class="text-sm font-medium px-2 py-1 bg-blue-500/20 rounded">${company.currency}</span>
+              </div>
+              <div class="text-sm text-green-400 flex items-center">
+                <span class="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                <span>Activa</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="text-center p-3 bg-blue-500/10 rounded-lg">
+              <div class="text-2xl font-bold text-blue-400">0</div>
+              <div class="text-xs text-gray-400">Empleados</div>
+            </div>
+            <div class="text-center p-3 bg-purple-500/10 rounded-lg">
+              <div class="text-2xl font-bold text-purple-400">${currencySymbol}0</div>
+              <div class="text-xs text-gray-400">Gastos (0)</div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex gap-2">
+              <button onclick='editCompany(${JSON.stringify(company).replace(/'/g, "\\'")})'  class="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm transition flex items-center gap-2">
+                <span>✏️</span>
+                <span>Editar</span>
+              </button>
+              <button onclick="deleteCompany('${company.id}', '${company.name}')" class="px-3 py-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-sm transition flex items-center gap-2">
+                <span class="text-red-500">🗑️</span>
+              </button>
+            </div>
+            <a href="/companies/${company.id}" class="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              Ver detalles
+              <span>→</span>
+            </a>
+          </div>
+        </div>
+      `}).join('')}
+    </div>
+
+    ${companies.length === 0 ? `
+      <div class="glass-panel p-12 text-center">
+        <div class="text-6xl mb-4">🏢</div>
+        <h3 class="text-xl font-bold mb-2">No hay empresas registradas</h3>
+        <p class="text-gray-400 mb-6">Comienza agregando tu primera empresa</p>
+        <button onclick="showNewCompanyModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg">
+          + Nueva Empresa
+        </button>
+      </div>
+    ` : ''}
+  </div>
+
+  <!-- Modal Nueva Empresa -->
+  <div id="newCompanyModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50 overflow-y-auto p-6">
+    <div class="glass-panel p-8 max-w-3xl w-full mx-auto my-8">
+      <h2 id="modalTitle" class="text-2xl font-bold mb-6">Nueva Empresa</h2>
+
+      <form id="newCompanyForm" class="space-y-6">
+        <input type="hidden" id="editingCompanyId" value="" />
+        <!-- Sección 1: Datos Básicos -->
+        <div class="space-y-4">
+          <h3 class="text-lg font-semibold text-blue-300 flex items-center gap-2">
+            <span>🏢</span>
+            Datos Básicos
+          </h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">🏛 Razón Social *</label>
+              <input type="text" id="companyName" required class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: TechMX Solutions S.A. de C.V." />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">🏷 Nombre Comercial *</label>
+              <input type="text" id="companyCommercialName" required class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: TechMX" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">🌐 País *</label>
+              <select id="companyCountry" required class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400">
+                <option value="">Seleccionar país...</option>
+                <option value="MX">🇲🇽 México</option>
+                <option value="US">🇺🇸 Estados Unidos</option>
+                <option value="ES">🇪🇸 España</option>
+                <option value="CA">🇨🇦 Canadá</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">📋 RFC/NIF *</label>
+              <input type="text" id="companyTaxId" required class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="RFC, NIF, EIN, BN" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">💰 Moneda Principal *</label>
+              <select id="companyCurrency" required class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400">
+                <option value="">Seleccionar moneda...</option>
+                <option value="MXN">MXN - Peso Mexicano</option>
+                <option value="USD">USD - Dólar</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="CAD">CAD - Dólar Canadiense</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">👥 Número de Empleados</label>
+            <input type="number" id="companyEmployees" min="0" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: 25" />
+          </div>
+        </div>
+
+        <!-- Sección 2: Información Comercial -->
+        <div class="space-y-4 pt-4 border-t border-white/10">
+          <h3 class="text-lg font-semibold text-green-300 flex items-center gap-2">
+            <span>💼</span>
+            Información Comercial
+          </h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">🏭 Giro Empresarial</label>
+              <select id="companyBusinessSector" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400">
+                <option value="">Seleccionar giro...</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Consultoría">Consultoría</option>
+                <option value="Manufactura">Manufactura</option>
+                <option value="Servicios">Servicios</option>
+                <option value="Comercio">Comercio</option>
+                <option value="Educación">Educación</option>
+                <option value="Salud">Salud</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">🌍 Sitio Web</label>
+              <input type="url" id="companyWebsite" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="https://www.empresa.com" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">📝 Descripción del Negocio</label>
+            <textarea id="companyDescription" rows="3" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Breve descripción de la actividad comercial de la empresa..."></textarea>
+          </div>
+        </div>
+
+        <!-- Sección 3: Dirección Fiscal -->
+        <div class="space-y-4 pt-4 border-t border-white/10">
+          <h3 class="text-lg font-semibold text-purple-300 flex items-center gap-2">
+            <span>📍</span>
+            Dirección Fiscal
+          </h3>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">🏠 Calle y Número</label>
+            <input type="text" id="companyStreet" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: Av. Insurgentes Sur 1234, Col. Del Valle" />
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">🏙 Ciudad</label>
+              <input type="text" id="companyCity" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: Ciudad de México" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">🗺 Estado/Provincia</label>
+              <input type="text" id="companyState" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: CDMX, Madrid, California" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">📮 Código Postal</label>
+              <input type="text" id="companyPostal" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: 03100, 28001, 90210" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">📞 Teléfono Principal</label>
+            <input type="tel" id="companyPhone" class="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400" placeholder="Ej: +52 555 123 4567" />
+          </div>
+        </div>
+
+        <!-- Sección 4: Branding Corporativo -->
+        <div class="space-y-4 pt-4 border-t border-white/10">
+          <h3 class="text-lg font-semibold text-yellow-300 flex items-center gap-2">
+            <span>🎨</span>
+            Branding Corporativo
+          </h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Logo Corporativo -->
+            <div>
+              <label class="block text-sm font-medium mb-2">🖼 Logo Corporativo</label>
+              <div id="logoDropZone" class="relative border-2 border-dashed border-white/20 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition bg-white/5">
+                <input type="file" id="companyLogoFile" accept="image/png,image/jpeg,image/jpg,image/svg+xml" class="hidden" />
+                <div id="logoPlaceholder">
+                  <div class="text-4xl mb-2">☁️</div>
+                  <div class="text-sm text-gray-300 mb-1">Arrastra tu logo aquí</div>
+                  <div class="text-xs text-gray-400">PNG, JPG, SVG (hasta 2MB)</div>
+                </div>
+                <div id="logoPreview" class="hidden">
+                  <img id="logoPreviewImg" src="" alt="Logo preview" class="max-h-32 mx-auto mb-2" />
+                  <button type="button" onclick="removeLogo()" class="text-xs text-red-400 hover:text-red-300">Eliminar</button>
+                </div>
+              </div>
+              <input type="hidden" id="companyLogo" />
+            </div>
+
+            <!-- Color Corporativo -->
+            <div>
+              <label class="block text-sm font-medium mb-2">🎨 Color Corporativo</label>
+              <div class="mb-3 relative">
+                <button type="button" onclick="toggleColorPicker()" class="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-lg font-medium transition flex items-center justify-center gap-2">
+                  <span>🎨</span>
+                  <span>Seleccionar Color</span>
+                  <span id="colorCircle" class="w-6 h-6 rounded-full border-2 border-white" style="background-color: #3B82F6;"></span>
+                </button>
+                <input type="hidden" id="companyColor" value="#3B82F6" />
+
+                <!-- Color Picker Dropdown -->
+                <div id="colorPickerDropdown" class="hidden absolute top-full left-0 mt-2 bg-gray-800 border border-white/20 rounded-lg p-4 shadow-xl z-50">
+                  <div class="mb-3">
+                    <label class="text-xs text-gray-400 mb-2 block">Selector de Color</label>
+                    <input type="color" id="colorPickerInput" value="#3B82F6" class="w-full h-10 rounded cursor-pointer" />
+                  </div>
+                  <div class="mb-2">
+                    <label class="text-xs text-gray-400 mb-2 block">Código Hexadecimal</label>
+                    <input type="text" id="colorHexInput" value="#3B82F6" class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-sm" maxlength="7" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-xs text-gray-400 mb-2">Colores Corporativos Sugeridos</div>
+              <div class="grid grid-cols-7 gap-2">
+                <button type="button" onclick="setColor('#FFA500')" class="w-10 h-10 rounded-lg bg-orange-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#4CAF50')" class="w-10 h-10 rounded-lg bg-green-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#3B82F6')" class="w-10 h-10 rounded-lg bg-blue-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#9C27B0')" class="w-10 h-10 rounded-lg bg-purple-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#F44336')" class="w-10 h-10 rounded-lg bg-red-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#FF9800')" class="w-10 h-10 rounded-lg bg-amber-500 hover:ring-2 ring-white transition shadow-lg"></button>
+                <button type="button" onclick="setColor('#673AB7')" class="w-10 h-10 rounded-lg bg-violet-600 hover:ring-2 ring-white transition shadow-lg"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3 mt-6 pt-4 border-t border-white/10">
+          <button type="button" onclick="hideNewCompanyModal()" class="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-lg transition font-medium">
+            Cancelar
+          </button>
+          <button type="submit" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition font-medium">
+            Crear Empresa
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function showNewCompanyModal() {
+      document.getElementById('newCompanyModal').classList.remove('hidden')
+      document.getElementById('newCompanyModal').classList.add('flex')
+    }
+
+    function hideNewCompanyModal() {
+      document.getElementById('newCompanyModal').classList.add('hidden')
+      document.getElementById('newCompanyModal').classList.remove('flex')
+      document.getElementById('newCompanyForm').reset()
+      document.getElementById('colorCircle').style.backgroundColor = '#3B82F6'
+      document.getElementById('editingCompanyId').value = ''
+      document.getElementById('modalTitle').textContent = 'Nueva Empresa'
+      removeLogo()
+    }
+
+    function setColor(color) {
+      document.getElementById('companyColor').value = color
+      document.getElementById('colorPickerInput').value = color
+      document.getElementById('colorHexInput').value = color
+      document.getElementById('colorCircle').style.backgroundColor = color
+    }
+
+    function toggleColorPicker() {
+      const dropdown = document.getElementById('colorPickerDropdown')
+      dropdown.classList.toggle('hidden')
+    }
+
+    function editCompany(company) {
+      // Cambiar título del modal
+      document.getElementById('modalTitle').textContent = 'Editar Empresa'
+
+      // Guardar el ID para edición
+      document.getElementById('editingCompanyId').value = company.id
+
+      // Cargar datos básicos
+      document.getElementById('companyName').value = company.name || ''
+      document.getElementById('companyCommercialName').value = company.commercial_name || ''
+      document.getElementById('companyCountry').value = company.country || ''
+      document.getElementById('companyTaxId').value = company.tax_id || ''
+      document.getElementById('companyCurrency').value = company.currency || ''
+      document.getElementById('companyEmployees').value = company.employees_count || 0
+
+      // Cargar información comercial
+      document.getElementById('companyBusinessSector').value = company.business_sector || ''
+      document.getElementById('companyWebsite').value = company.website || ''
+      document.getElementById('companyDescription').value = company.business_description || ''
+
+      // Cargar dirección fiscal
+      document.getElementById('companyStreet').value = company.street_address || ''
+      document.getElementById('companyCity').value = company.city || ''
+      document.getElementById('companyState').value = company.state_province || ''
+      document.getElementById('companyPostal').value = company.postal_code || ''
+      document.getElementById('companyPhone').value = company.phone || ''
+
+      // Cargar logo si existe
+      if (company.logo_url) {
+        document.getElementById('companyLogo').value = company.logo_url
+        document.getElementById('logoPreviewImg').src = company.logo_url
+        document.getElementById('logoPlaceholder').classList.add('hidden')
+        document.getElementById('logoPreview').classList.remove('hidden')
+      }
+
+      // Cargar color
+      const color = company.color || '#3B82F6'
+      document.getElementById('companyColor').value = color
+      document.getElementById('colorPickerInput').value = color
+      document.getElementById('colorHexInput').value = color
+      document.getElementById('colorCircle').style.backgroundColor = color
+
+      // Abrir modal
+      document.getElementById('newCompanyModal').classList.remove('hidden')
+      document.getElementById('newCompanyModal').classList.add('flex')
+    }
+
+    async function deleteCompany(id, name) {
+      if (!confirm(\`¿Estás seguro de que deseas eliminar la empresa "\${name}"?\n\nEsta acción no se puede deshacer.\`)) {
+        return
+      }
 
       try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+        const response = await fetch(\`/api/companies/\${id}\`, {
+          method: 'DELETE'
         })
 
-        const data = await res.json()
+        const result = await response.json()
 
-        if (data.success) {
-          document.getElementById('message').innerHTML =
-            '<div class="text-green-600">✅ Login exitoso. Redirigiendo...</div>'
-          setTimeout(() => window.location.href = '/dashboard', 1000)
+        if (response.ok) {
+          alert('Empresa eliminada exitosamente')
+          window.location.reload()
         } else {
-          document.getElementById('message').innerHTML =
-            '<div class="text-red-600">❌ ' + data.error + '</div>'
+          alert('Error al eliminar empresa: ' + (result.error || 'Error desconocido'))
         }
       } catch (error) {
-        document.getElementById('message').innerHTML =
-          '<div class="text-red-600">❌ Error: ' + error.message + '</div>'
+        alert('Error al eliminar empresa: ' + error.message)
+      }
+    }
+
+    function removeLogo() {
+      document.getElementById('logoPlaceholder').classList.remove('hidden')
+      document.getElementById('logoPreview').classList.add('hidden')
+      document.getElementById('logoPreviewImg').src = ''
+      document.getElementById('companyLogo').value = ''
+      document.getElementById('companyLogoFile').value = ''
+    }
+
+    // Sync color picker input with hex input and circle
+    document.getElementById('colorPickerInput').addEventListener('input', (e) => {
+      const color = e.target.value
+      document.getElementById('companyColor').value = color
+      document.getElementById('colorHexInput').value = color
+      document.getElementById('colorCircle').style.backgroundColor = color
+    })
+
+    // Sync hex input with color picker and circle
+    document.getElementById('colorHexInput').addEventListener('input', (e) => {
+      const color = e.target.value
+      if (/^#[0-9A-F]{6}$/i.test(color)) {
+        document.getElementById('companyColor').value = color
+        document.getElementById('colorPickerInput').value = color
+        document.getElementById('colorCircle').style.backgroundColor = color
+      }
+    })
+
+    // Close color picker when clicking outside
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('colorPickerDropdown')
+      const button = e.target.closest('button[onclick="toggleColorPicker()"]')
+      if (!dropdown.contains(e.target) && !button) {
+        dropdown.classList.add('hidden')
+      }
+    })
+
+    // Logo upload handling
+    const logoDropZone = document.getElementById('logoDropZone')
+    const logoFileInput = document.getElementById('companyLogoFile')
+
+    logoDropZone.addEventListener('click', () => {
+      logoFileInput.click()
+    })
+
+    logoFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0]
+      if (file) {
+        handleLogoFile(file)
+      }
+    })
+
+    logoDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      logoDropZone.classList.add('border-blue-400')
+    })
+
+    logoDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault()
+      logoDropZone.classList.remove('border-blue-400')
+    })
+
+    logoDropZone.addEventListener('drop', (e) => {
+      e.preventDefault()
+      logoDropZone.classList.remove('border-blue-400')
+      const file = e.dataTransfer.files[0]
+      if (file && file.type.startsWith('image/')) {
+        handleLogoFile(file)
+      }
+    })
+
+    function handleLogoFile(file) {
+      // Validate file size (2MB max)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('El archivo es muy grande. Máximo 2MB.')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const base64 = e.target.result
+        document.getElementById('companyLogo').value = base64
+        document.getElementById('logoPreviewImg').src = base64
+        document.getElementById('logoPlaceholder').classList.add('hidden')
+        document.getElementById('logoPreview').classList.remove('hidden')
+      }
+      reader.readAsDataURL(file)
+    }
+
+    document.getElementById('newCompanyForm').addEventListener('submit', async (e) => {
+      e.preventDefault()
+
+      // Datos básicos
+      const name = document.getElementById('companyName').value
+      const commercialName = document.getElementById('companyCommercialName').value
+      const country = document.getElementById('companyCountry').value
+      const taxId = document.getElementById('companyTaxId').value
+      const currency = document.getElementById('companyCurrency').value
+      const employees = parseInt(document.getElementById('companyEmployees').value) || 0
+
+      // Información comercial
+      const businessSector = document.getElementById('companyBusinessSector').value || null
+      const website = document.getElementById('companyWebsite').value || null
+      const description = document.getElementById('companyDescription').value || null
+
+      // Dirección fiscal
+      const street = document.getElementById('companyStreet').value || null
+      const city = document.getElementById('companyCity').value || null
+      const state = document.getElementById('companyState').value || null
+      const postal = document.getElementById('companyPostal').value || null
+      const phone = document.getElementById('companyPhone').value || null
+
+      // Branding
+      const logoUrl = document.getElementById('companyLogo').value || null
+      const color = document.getElementById('companyColor').value
+
+      try {
+        const editingId = document.getElementById('editingCompanyId').value
+        const isEditing = editingId !== ''
+
+        const url = isEditing ? \`/api/companies/\${editingId}\` : '/api/companies'
+        const method = isEditing ? 'PUT' : 'POST'
+
+        const response = await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name,
+            commercial_name: commercialName,
+            country,
+            tax_id: taxId,
+            currency,
+            employees_count: employees,
+            business_sector: businessSector,
+            website,
+            business_description: description,
+            street_address: street,
+            city,
+            state_province: state,
+            postal_code: postal,
+            phone,
+            logo_url: logoUrl,
+            color
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || (isEditing ? 'Error al actualizar empresa' : 'Error al crear empresa'))
+        }
+
+        window.location.reload()
+      } catch (error) {
+        alert('Error: ' + error.message)
       }
     })
   </script>
 </body>
 </html>
-  `)
+    `)
+  } catch (error: any) {
+    return c.text('Error: ' + error.message, 500)
+  }
 })
 
 // Servir archivos estáticos
