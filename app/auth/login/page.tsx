@@ -29,8 +29,8 @@ export default function LoginPage() {
         await signIn(email, password)
       }
       router.push('/dashboard')
-    } catch (err: any) {
-      setError(err.message || 'Error al autenticar')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al autenticar')
     } finally {
       setLoading(false)
     }
