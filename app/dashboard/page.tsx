@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
