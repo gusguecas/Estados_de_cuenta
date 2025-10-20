@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Empresas - users can only access their own
+    match /empresas/{empresaId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // Cuentas - users can only access their own
+    match /cuentas/{cuentaId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // Movimientos - users can only access movements of their own accounts
+    match /movimientos/{movimientoId} {
+      allow read, write: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/cuentas/$(resource.data.cuentaId)) &&
+        get(/databases/$(database)/documents/cuentas/$(resource.data.cuentaId)).data.userId == request.auth.uid;
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/cuentas/$(request.resource.data.cuentaId)) &&
+        get(/databases/$(database)/documents/cuentas/$(request.resource.data.cuentaId)).data.userId == request.auth.uid;
+    }
+
+    // Categorias - users can only access their own
+    match /categorias/{categoriaId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // Estados de cuenta - users can only access their own
+    match /estados_cuenta/{estadoId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+  }
+}

@@ -2,6 +2,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   getDocs,
   getDoc,
@@ -11,7 +12,8 @@ import {
   orderBy,
   Timestamp
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { db, storage } from './firebase'
 import type {
   Empresa,
   EmpresaFormData,
@@ -19,7 +21,9 @@ import type {
   CuentaBancariaFormData,
   Movimiento,
   MovimientoFormData,
-  Categoria
+  TransferenciaFormData,
+  Categoria,
+  TipoMovimiento
 } from './types'
 
 // ============================================================================
@@ -170,10 +174,27 @@ export async function deleteCuenta(id: string): Promise<void> {
 // MOVIMIENTOS
 // ============================================================================
 
+// Función para subir archivo adjunto de movimiento
+export async function uploadMovimientoAdjunto(
+  file: File,
+  userId: string,
+  cuentaId: string
+): Promise<string> {
+  const timestamp = Date.now()
+  const fileName = `${timestamp}_${file.name}`
+  const storageRef = ref(storage, `movimientos/${userId}/${cuentaId}/${fileName}`)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
+}
+
 export async function createMovimiento(
   userId: string,
   cuentaId: string,
-  data: MovimientoFormData
+  data: MovimientoFormData,
+  adjuntoUrl?: string
 ): Promise<string> {
   // Obtener la cuenta para calcular el nuevo saldo
   const cuenta = await getCuenta(cuentaId)
@@ -193,6 +214,7 @@ export async function createMovimiento(
     cuentaId,
     fecha: new Date(data.fecha),
     saldoDespues: nuevoSaldo,
+    adjunto: adjuntoUrl || null,
     cancelado: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -292,6 +314,107 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
 }
 
 // ============================================================================
+// TRANSFERENCIAS ENTRE CUENTAS
+// ============================================================================
+
+export async function createTransferencia(
+  userId: string,
+  data: TransferenciaFormData
+): Promise<{ origenId: string; destinoId: string }> {
+  const { cuentaOrigenId, cuentaDestinoId, monto, fecha, descripcion, referencia, notas } = data
+
+  // Verificar que las cuentas existan y obtener sus datos
+  const [cuentaOrigen, cuentaDestino] = await Promise.all([
+    getCuenta(cuentaOrigenId),
+    getCuenta(cuentaDestinoId)
+  ])
+
+  if (!cuentaOrigen || !cuentaDestino) {
+    throw new Error('Una de las cuentas no existe')
+  }
+
+  if (cuentaOrigenId === cuentaDestinoId) {
+    throw new Error('No puedes transferir a la misma cuenta')
+  }
+
+  // Calcular nuevos saldos
+  const nuevoSaldoOrigen = cuentaOrigen.saldoActual - monto
+  const nuevoSaldoDestino = cuentaDestino.saldoActual + monto
+
+  const fechaMovimiento = new Date(fecha)
+  const timestampNow = serverTimestamp()
+
+  // Crear el movimiento de SALIDA (egreso en cuenta origen)
+  const movimientoOrigenData = {
+    cuentaId: cuentaOrigenId,
+    userId,
+    fecha: fechaMovimiento,
+    tipo: 'egreso' as TipoMovimiento,
+    monto,
+    descripcion: `Transferencia a ${cuentaDestino.nombre} - ${descripcion}`,
+    referencia,
+    notas,
+    saldoDespues: nuevoSaldoOrigen,
+    cuentaDestinoId,
+    esOrigen: true,
+    cancelado: false,
+    createdAt: timestampNow,
+    updatedAt: timestampNow
+  }
+
+  // Crear el movimiento de ENTRADA (ingreso en cuenta destino)
+  const movimientoDestinoData = {
+    cuentaId: cuentaDestinoId,
+    userId,
+    fecha: fechaMovimiento,
+    tipo: 'ingreso' as TipoMovimiento,
+    monto,
+    descripcion: `Transferencia desde ${cuentaOrigen.nombre} - ${descripcion}`,
+    referencia,
+    notas,
+    saldoDespues: nuevoSaldoDestino,
+    cuentaDestinoId: cuentaOrigenId, // La cuenta destino es la origen del movimiento vinculado
+    esOrigen: false,
+    cancelado: false,
+    createdAt: timestampNow,
+    updatedAt: timestampNow
+  }
+
+  // Crear ambos movimientos
+  const [movimientoOrigenRef, movimientoDestinoRef] = await Promise.all([
+    addDoc(collection(db, 'movimientos'), movimientoOrigenData),
+    addDoc(collection(db, 'movimientos'), movimientoDestinoData)
+  ])
+
+  // Vincular los movimientos entre sí
+  await Promise.all([
+    updateDoc(doc(db, 'movimientos', movimientoOrigenRef.id), {
+      movimientoVinculadoId: movimientoDestinoRef.id
+    }),
+    updateDoc(doc(db, 'movimientos', movimientoDestinoRef.id), {
+      movimientoVinculadoId: movimientoOrigenRef.id
+    })
+  ])
+
+  // Actualizar los saldos de ambas cuentas
+  await Promise.all([
+    updateDoc(doc(db, 'cuentas', cuentaOrigenId), {
+      saldoActual: nuevoSaldoOrigen,
+      updatedAt: timestampNow
+    }),
+    updateDoc(doc(db, 'cuentas', cuentaDestinoId), {
+      saldoActual: nuevoSaldoDestino,
+      updatedAt: timestampNow
+    })
+  ])
+
+  return {
+    origenId: movimientoOrigenRef.id,
+    destinoId: movimientoDestinoRef.id
+  }
+}
+
+// ============================================================================
 // CATEGORÍAS
 // ============================================================================
 
@@ -318,4 +441,67 @@ export async function createCategoria(userId: string, nombre: string, tipo: 'ing
     activo: true
   })
   return categoriaRef.id
+}
+
+// ============= Estados de Cuenta =============
+
+export async function getEstadosCuenta(cuentaId: string): Promise<any[]> {
+  const q = query(
+    collection(db, 'estados_cuenta'),
+    where('cuentaId', '==', cuentaId),
+    orderBy('ano', 'desc'),
+    orderBy('mes', 'desc')
+  )
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fechaCarga: (doc.data().fechaCarga as Timestamp)?.toDate() || new Date(),
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date()
+  }))
+}
+
+export async function createEstadoCuenta(
+  userId: string,
+  cuentaId: string,
+  mes: number,
+  ano: number,
+  archivoUrl: string
+): Promise<string> {
+  const estadoRef = await addDoc(collection(db, 'estados_cuenta'), {
+    userId,
+    cuentaId,
+    mes,
+    ano,
+    archivoUrl,
+    fechaCarga: serverTimestamp(),
+    createdAt: serverTimestamp()
+  })
+  return estadoRef.id
+}
+
+export async function deleteEstadoCuenta(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'estados_cuenta', id))
+}
+
+export async function uploadEstadoCuentaPDF(file: File, cuentaId: string, mes: number, año: number): Promise<string> {
+  const fileName = `estados-cuenta/${cuentaId}/${año}-${String(mes).padStart(2, '0')}.pdf`
+  const storageRef = ref(storage, fileName)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
+}
+
+export async function uploadEmpresaLogo(file: File, empresaId: string): Promise<string> {
+  const fileExtension = file.name.split('.').pop()
+  const fileName = `empresas/${empresaId}/logo.${fileExtension}`
+  const storageRef = ref(storage, fileName)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
 }

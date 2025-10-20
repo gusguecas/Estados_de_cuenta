@@ -4,7 +4,7 @@ export type Moneda = 'MXN' | 'USD' | 'EUR'
 
 export type TipoCuenta = 'cheques' | 'credito' | 'prestamo' | 'ahorro'
 
-export type TipoMovimiento = 'ingreso' | 'egreso'
+export type TipoMovimiento = 'ingreso' | 'egreso' | 'transferencia'
 
 export interface Empresa {
   id: string
@@ -20,6 +20,7 @@ export interface Empresa {
   email?: string
   giro?: string
   logo?: string
+  moneda: Moneda
   activo: boolean
   createdAt: Date
   updatedAt: Date
@@ -44,6 +45,8 @@ export interface CuentaBancaria {
   telefonoBanco?: string
   fechaApertura?: Date
   limiteCredito?: number
+  diaCorte?: number // Día del mes en que corta la tarjeta (1-31)
+  diaLimitePago?: number // Día límite para pagar la tarjeta (1-31)
   notas?: string
   activo: boolean
   createdAt: Date
@@ -72,8 +75,13 @@ export interface Movimiento {
   referencia?: string // Número de cheque o referencia
   beneficiario?: string
   comentarios?: string
+  notas?: string
   saldoDespues: number // Saldo después de este movimiento
   adjunto?: string // URL del archivo adjunto
+  // Campos para transferencias
+  cuentaDestinoId?: string // ID de la cuenta destino (para transferencias)
+  movimientoVinculadoId?: string // ID del movimiento relacionado (para transferencias)
+  esOrigen?: boolean // true si este es el movimiento de origen en una transferencia
   cancelado: boolean
   createdAt: Date
   updatedAt: Date
@@ -101,6 +109,8 @@ export interface EmpresaFormData {
   telefono?: string
   email?: string
   giro?: string
+  logo?: string
+  moneda: Moneda
 }
 
 export interface CuentaBancariaFormData {
@@ -113,6 +123,9 @@ export interface CuentaBancariaFormData {
   saldoInicial: number
   beneficiario?: string
   sucursal?: string
+  limiteCredito?: number
+  diaCorte?: number
+  diaLimitePago?: number
   notas?: string
 }
 
@@ -125,4 +138,15 @@ export interface MovimientoFormData {
   referencia?: string
   beneficiario?: string
   comentarios?: string
+  notas?: string
+}
+
+export interface TransferenciaFormData {
+  fecha: string
+  monto: number
+  cuentaOrigenId: string
+  cuentaDestinoId: string
+  descripcion: string
+  referencia?: string
+  notas?: string
 }
