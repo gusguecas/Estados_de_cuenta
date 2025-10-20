@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { useEffect, useState, useCallback } from 'react'
 import { MainLayout } from '@/components/main-layout'
 import { getEmpresas, getCuentas, getEmpresa } from '@/lib/firestore'
+import type { Empresa, CuentaBancaria } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TransferenciaModal } from '@/components/transferencia-modal'
@@ -30,8 +31,8 @@ import {
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
-  const [empresas, setEmpresas] = useState<any[]>([])
-  const [cuentas, setCuentas] = useState<any[]>([])
+  const [empresas, setEmpresas] = useState<Empresa[]>([])
+  const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
   const [loading, setLoading] = useState(true)
   const [showTransferenciaModal, setShowTransferenciaModal] = useState(false)
   const [showAlertModal, setShowAlertModal] = useState(false)

@@ -3,18 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { getEstadosCuenta, deleteEstadoCuenta } from '@/lib/firestore'
+import type { EstadoCuenta } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, XCircle, Download, Trash2, FileText } from 'lucide-react'
-
-interface EstadoCuenta {
-  id: string
-  mes: number
-  ano: number
-  archivoUrl: string
-  fechaCarga: Date
-}
 
 interface EstadosCuentaCalendarProps {
   cuentaId: string
@@ -64,7 +57,7 @@ export function EstadosCuentaCalendar({ cuentaId, onUploadClick, refreshTrigger 
   }, [user, cuentaId, loadEstadosCuenta, refreshTrigger])
 
   const tieneEstadoCuenta = (mes: number, ano: number): EstadoCuenta | undefined => {
-    return estadosCuenta.find(e => e.mes === mes && e.ano === ano)
+    return estadosCuenta.find(e => e.mes === mes && e.año === ano)
   }
 
   const handleDelete = async (id: string) => {
@@ -114,7 +107,7 @@ export function EstadosCuentaCalendar({ cuentaId, onUploadClick, refreshTrigger 
   }
 
   const anosDisponibles = [anoSeleccionado - 2, anoSeleccionado - 1, anoSeleccionado, anoSeleccionado + 1]
-  const estadosCuentaDelAno = estadosCuenta.filter(e => e.ano === anoSeleccionado)
+  const estadosCuentaDelAno = estadosCuenta.filter(e => e.año === anoSeleccionado)
 
   return (
     <div className="space-y-6">
@@ -172,7 +165,7 @@ export function EstadosCuentaCalendar({ cuentaId, onUploadClick, refreshTrigger 
                   {estado ? (
                     <div className="space-y-2">
                       <p className="text-xs text-emerald-300 font-semibold">
-                        {formatDate(estado.fechaCarga)}
+                        {formatDate(estado.uploadedAt)}
                       </p>
                       <div className="flex gap-1">
                         <Button

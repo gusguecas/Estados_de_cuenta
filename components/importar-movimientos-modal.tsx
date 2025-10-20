@@ -71,14 +71,14 @@ export function ImportarMovimientosModal({
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
       const movimientosImportados: MovimientoImportado[] = await Promise.all(
-        jsonData.map(async (row: any) => {
+        (jsonData as Record<string, unknown>[]).map(async (row) => {
           const tipo = parseTipo(row.Tipo || row.tipo)
           const movimiento: MovimientoImportado = {
             fecha: parseDate(row.Fecha || row.fecha),
             tipo,
-            monto: parseFloat(row.Monto || row.monto || 0),
+            monto: parseFloat(String(row.Monto || row.monto || 0)),
             descripcion: String(row.Descripcion || row.descripcion || ''),
-            categoriaId: await findCategoriaId(row.Categoria || row.categoria || '', tipo),
+            categoriaId: await findCategoriaId(String(row.Categoria || row.categoria || ''), tipo),
             referencia: String(row.Referencia || row.referencia || ''),
             beneficiario: String(row.Beneficiario || row.beneficiario || ''),
             comentarios: String(row.Comentarios || row.comentarios || ''),
@@ -107,7 +107,7 @@ export function ImportarMovimientosModal({
     }
   }
 
-  const parseDate = (value: any): string => {
+  const parseDate = (value: unknown): string => {
     if (!value) return ''
 
     // Si es un número (fecha de Excel)
@@ -127,7 +127,7 @@ export function ImportarMovimientosModal({
     return 'Invalid Date'
   }
 
-  const parseTipo = (value: any): TipoMovimiento => {
+  const parseTipo = (value: unknown): TipoMovimiento => {
     const tipo = String(value || '').toLowerCase().trim()
     if (tipo === 'ingreso' || tipo === 'abono') return 'ingreso'
     if (tipo === 'egreso' || tipo === 'cargo') return 'egreso'
@@ -146,7 +146,8 @@ export function ImportarMovimientosModal({
 
     // Si no existe, crearla
     try {
-      const newCategoriaId = await createCategoria(user.uid, nombre.trim(), tipo)
+      const tipoCategoria = tipo === 'transferencia' ? 'egreso' : tipo
+      const newCategoriaId = await createCategoria(user.uid, nombre.trim(), tipoCategoria)
       // Recargar categorías para que esté disponible en las siguientes filas
       const updatedCategorias = await getCategorias(user.uid)
       setCategorias(updatedCategorias)

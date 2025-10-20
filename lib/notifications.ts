@@ -47,7 +47,6 @@ export function sendPaymentNotification(alert: PaymentAlert) {
       badge: '/logo.png',
       tag: `payment-${alert.cuenta}`,
       requireInteraction: alert.dias === 0, // Solo requiere interacción si es hoy
-      vibrate: alert.dias === 0 ? [200, 100, 200] : undefined,
     })
   } catch (error) {
     console.error('Error al enviar notificación:', error)

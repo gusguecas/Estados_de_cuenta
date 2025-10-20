@@ -23,7 +23,8 @@ import type {
   MovimientoFormData,
   TransferenciaFormData,
   Categoria,
-  TipoMovimiento
+  TipoMovimiento,
+  EstadoCuenta
 } from './types'
 
 // ============================================================================
@@ -445,7 +446,7 @@ export async function createCategoria(userId: string, nombre: string, tipo: 'ing
 
 // ============= Estados de Cuenta =============
 
-export async function getEstadosCuenta(cuentaId: string): Promise<any[]> {
+export async function getEstadosCuenta(cuentaId: string): Promise<EstadoCuenta[]> {
   const q = query(
     collection(db, 'estados_cuenta'),
     where('cuentaId', '==', cuentaId),
@@ -454,12 +455,18 @@ export async function getEstadosCuenta(cuentaId: string): Promise<any[]> {
   )
 
   const snapshot = await getDocs(q)
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    fechaCarga: (doc.data().fechaCarga as Timestamp)?.toDate() || new Date(),
-    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date()
-  }))
+  return snapshot.docs.map(doc => {
+    const data = doc.data()
+    return {
+      id: doc.id,
+      cuentaId: data.cuentaId as string,
+      userId: data.userId as string,
+      mes: data.mes as number,
+      año: data.ano as number,
+      archivoUrl: data.archivoUrl as string,
+      uploadedAt: (data.fechaCarga as Timestamp)?.toDate() || new Date()
+    }
+  })
 }
 
 export async function createEstadoCuenta(

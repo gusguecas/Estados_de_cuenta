@@ -85,7 +85,8 @@ export function MovimientoModal({
 
     try {
       setLoading(true)
-      const newCategoriaId = await createCategoria(user.uid, newCategoriaNombre.trim(), formData.tipo)
+      const tipoCategoria = formData.tipo === 'transferencia' ? 'egreso' : formData.tipo
+      const newCategoriaId = await createCategoria(user.uid, newCategoriaNombre.trim(), tipoCategoria)
       await loadCategorias()
       setFormData(prev => ({ ...prev, categoriaId: newCategoriaId }))
       setNewCategoriaNombre('')

@@ -17,7 +17,7 @@ import {
 export function Header() {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, logout } = useAuth()
+  const { user, signOut } = useAuth()
   const [logoError, setLogoError] = useState(false)
 
   const navigation = [
@@ -28,7 +28,7 @@ export function Header() {
   ]
 
   const handleLogout = async () => {
-    await logout()
+    await signOut()
     router.push('/auth/login')
   }
 
