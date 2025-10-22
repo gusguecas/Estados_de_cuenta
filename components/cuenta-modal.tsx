@@ -118,7 +118,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
 
       // Limpiar campos undefined, null y strings vacíos para Firestore
       const dataToClean = { ...formData, logo: logoUrl }
-      const cleanData: any = {}
+      const cleanData: Record<string, unknown> = {}
 
       Object.entries(dataToClean).forEach(([key, value]) => {
         // Solo incluir valores que no sean undefined, null, o string vacío
@@ -142,7 +142,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
         // Si hay logo, subirlo y actualizar
         if (logoFile) {
           logoUrl = await uploadCuentaLogo(logoFile, cuentaId)
-          const logoUpdate: any = { logo: logoUrl }
+          const logoUpdate: Record<string, string> = { logo: logoUrl }
           await updateCuenta(cuentaId, logoUpdate)
         }
       }

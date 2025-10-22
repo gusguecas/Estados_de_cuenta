@@ -14,12 +14,11 @@ import { Button } from '@/components/ui/button'
 import { TransferenciaModal } from '@/components/transferencia-modal'
 import { PaymentAlertModal } from '@/components/payment-alert-modal'
 import { requestNotificationPermission, sendMultiplePaymentNotifications, type PaymentAlert } from '@/lib/notifications'
+import Image from 'next/image'
 import {
   Building2,
   User,
   Wallet,
-  TrendingUp,
-  TrendingDown,
   ArrowRight,
   DollarSign,
   PieChart,
@@ -469,10 +468,11 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-3">
                           {tarjeta.logo ? (
                             <div className="relative w-12 h-12 flex items-center justify-center">
-                              <img
+                              <Image
                                 src={tarjeta.logo}
                                 alt={tarjeta.banco}
-                                className="w-full h-full object-contain"
+                                fill
+                                className="object-contain"
                               />
                             </div>
                           ) : (

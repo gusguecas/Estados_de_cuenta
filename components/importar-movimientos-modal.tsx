@@ -75,7 +75,7 @@ export function ImportarMovimientosModal({
         console.log('📋 Columnas detectadas:', Object.keys(jsonData[0] as Record<string, unknown>))
         console.log('📝 Primera fila de ejemplo:', jsonData[0])
         console.log('💰 Primeras 10 filas con valores CARGO/ABONO:')
-        jsonData.slice(0, 10).forEach((row: any, idx: number) => {
+        jsonData.slice(0, 10).forEach((row: Record<string, unknown>, idx: number) => {
           console.log(`  Fila ${idx + 1}: CONCEPTO="${row.CONCEPTO}", CARGO=${row.CARGO || 'N/A'}, ABONO=${row.ABONO || 'N/A'}`)
         })
       }
