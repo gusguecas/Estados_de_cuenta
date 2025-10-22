@@ -108,8 +108,15 @@ export function MovimientoModal({
 
   useEffect(() => {
     if (movimiento) {
+      // Extraer fecha en UTC para evitar problemas de zona horaria
+      const fechaDate = movimiento.fecha
+      const year = fechaDate.getUTCFullYear()
+      const month = String(fechaDate.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(fechaDate.getUTCDate()).padStart(2, '0')
+      const fechaString = `${year}-${month}-${day}`
+
       setFormData({
-        fecha: movimiento.fecha.toISOString().split('T')[0],
+        fecha: fechaString,
         tipo: movimiento.tipo,
         monto: movimiento.monto,
         descripcion: movimiento.descripcion,
@@ -177,14 +184,16 @@ export function MovimientoModal({
     try {
       setLoading(true)
 
-      // Subir archivo adjunto si existe
+      // Subir archivo adjunto si existe (tanto para crear como para editar)
       let adjuntoUrl: string | undefined
-      if (archivoAdjunto && !movimiento) {
+      if (archivoAdjunto) {
         adjuntoUrl = await uploadMovimientoAdjunto(archivoAdjunto, user.uid, cuentaId)
       }
 
       if (movimiento) {
-        await updateMovimiento(movimiento.id, formData)
+        // Si hay nuevo adjunto, actualizarlo
+        const updateData = adjuntoUrl ? { ...formData, adjunto: adjuntoUrl } : formData
+        await updateMovimiento(movimiento.id, updateData)
       } else {
         await createMovimiento(user.uid, cuentaId, formData, adjuntoUrl)
       }
@@ -312,7 +321,7 @@ export function MovimientoModal({
                     onChange={(e) => handleChange('fecha', e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-blue-500 focus:ring-blue-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-blue-500 focus:ring-blue-500/20"
                   />
                 </div>
               </div>
@@ -376,7 +385,7 @@ export function MovimientoModal({
                     onChange={(e) => handleChange('monto', parseFloat(e.target.value) || 0)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
                   />
                 </div>
               </div>
@@ -415,7 +424,7 @@ export function MovimientoModal({
                             handleCreateCategoria()
                           }
                         }}
-                        className="h-16 text-xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
+                        className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
                       />
                       <Button
                         type="button"
@@ -453,7 +462,7 @@ export function MovimientoModal({
                         </div>
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-slate-700">
-                        {categoriasDisponibles.map((cat) => (
+                        {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
                           <SelectItem key={cat.id} value={cat.id} className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                             {cat.nombre}
                           </SelectItem>
@@ -482,7 +491,7 @@ export function MovimientoModal({
                   onChange={(e) => handleChange('descripcion', e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
                 />
               </div>
             </div>
@@ -506,7 +515,7 @@ export function MovimientoModal({
                         value={formData.referencia}
                         onChange={(e) => handleChange('referencia', e.target.value)}
                         disabled={loading}
-                        className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
                       />
                     </div>
                   </div>
@@ -526,7 +535,7 @@ export function MovimientoModal({
                         value={formData.beneficiario}
                         onChange={(e) => handleChange('beneficiario', e.target.value)}
                         disabled={loading}
-                        className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
+                        className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
                       />
                     </div>
                   </div>
@@ -548,7 +557,7 @@ export function MovimientoModal({
                       value={formData.comentarios}
                       onChange={(e) => handleChange('comentarios', e.target.value)}
                       disabled={loading}
-                      className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500/20"
+                      className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500/20"
                     />
                   </div>
                 </div>
@@ -571,48 +580,46 @@ export function MovimientoModal({
                   value={formData.notas}
                   onChange={(e) => handleChange('notas', e.target.value)}
                   disabled={loading}
-                  className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
                 />
               </div>
             </div>
 
-            {/* Archivo Adjunto - Solo en nuevos movimientos */}
-            {!movimiento && (
-              <div className="grid gap-4">
-                <Label htmlFor="adjunto" className="text-2xl font-black text-white flex items-center gap-3">
-                  <Paperclip className="h-7 w-7 text-purple-400" />
-                  Comprobante / Adjunto
-                </Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                    <Paperclip className="h-8 w-8 text-purple-400" />
-                  </div>
-                  <Input
-                    id="adjunto"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        setArchivoAdjunto(file)
-                      }
-                    }}
-                    disabled={loading}
-                    className="pl-20 h-20 text-xl font-bold bg-slate-900/50 border-slate-700 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-lg file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 focus:border-purple-500 focus:ring-purple-500/20"
-                  />
+            {/* Archivo Adjunto */}
+            <div className="grid gap-4">
+              <Label htmlFor="adjunto" className="text-2xl font-black text-white flex items-center gap-3">
+                <Paperclip className="h-7 w-7 text-purple-400" />
+                Comprobante / Adjunto
+              </Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <Paperclip className="h-8 w-8 text-purple-400" />
                 </div>
-                {archivoAdjunto && (
-                  <div className="p-4 bg-purple-500/10 border-2 border-purple-500/30 rounded-xl">
-                    <p className="text-lg text-purple-300 font-semibold">
-                      Archivo: <span className="text-white font-black">{archivoAdjunto.name}</span>
-                    </p>
-                    <p className="text-base text-purple-400 mt-1">
-                      Tamaño: {(archivoAdjunto.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                )}
+                <Input
+                  id="adjunto"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setArchivoAdjunto(file)
+                    }
+                  }}
+                  disabled={loading}
+                  className="pl-20 h-20 py-6 text-xl font-bold bg-slate-900/50 border-slate-700 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-lg file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 focus:border-purple-500 focus:ring-purple-500/20"
+                />
               </div>
-            )}
+              {archivoAdjunto && (
+                <div className="p-4 bg-purple-500/10 border-2 border-purple-500/30 rounded-xl">
+                  <p className="text-lg text-purple-300 font-semibold">
+                    Archivo: <span className="text-white font-black">{archivoAdjunto.name}</span>
+                  </p>
+                  <p className="text-base text-purple-400 mt-1">
+                    Tamaño: {(archivoAdjunto.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="gap-4 pt-8 border-t border-slate-700">

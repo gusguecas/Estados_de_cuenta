@@ -41,7 +41,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-emerald-500/20 bg-gradient-to-r from-slate-950 via-blue-950 to-slate-950 shadow-2xl backdrop-blur-xl">
-      <div className="container mx-auto flex h-52 items-center justify-between px-6">
+      <div className="flex h-52 items-center justify-between px-8">
         {/* Logo */}
         <div className="flex items-center gap-8">
           <div className="relative flex h-36 w-36 items-center justify-center">

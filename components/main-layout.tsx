@@ -16,7 +16,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       <div className="relative z-10">
         <Header />
-        <main className="container mx-auto px-6 py-10">
+        <main className="w-full px-6 py-10">
           {children}
         </main>
       </div>

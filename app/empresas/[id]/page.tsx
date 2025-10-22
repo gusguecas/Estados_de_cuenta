@@ -400,20 +400,38 @@ export default function EmpresaDetailPage({ params }: PageProps) {
                   onClick={() => router.push(`/cuentas/${cuenta.id}`)}
                 >
                   <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-cyan-500 to-blue-500 opacity-10 rounded-full -mr-24 -mt-24"></div>
-                  <CardHeader className="pb-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <CardTitle className="flex items-center gap-4 text-3xl font-black text-white mb-3">
-                          <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 shadow-lg shadow-cyan-500/30">
-                            <CreditCard className="h-8 w-8 text-white" strokeWidth={2.5} />
+                  <CardHeader className="pb-6 pt-8">
+                    <div className="flex flex-col items-center gap-4 mb-4">
+                      <div className="relative w-48 h-48 flex items-center justify-center">
+                        {cuenta.logo ? (
+                          <Image
+                            src={cuenta.logo}
+                            alt={cuenta.banco}
+                            fill
+                            className="object-contain scale-[2]"
+                          />
+                        ) : (
+                          <div className="p-3 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-500 shadow-2xl shadow-cyan-500/30">
+                            <CreditCard className="h-16 w-16 text-white" strokeWidth={2.5} />
                           </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-5xl">
+                          {cuenta.moneda === 'MXN' ? '🇲🇽' : cuenta.moneda === 'USD' ? '🇺🇸' : '🇪🇺'}
+                        </span>
+                        {getTipoCuentaBadge(cuenta.tipoCuenta)}
+                      </div>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 text-center">
+                        <CardTitle className="text-3xl font-black text-white mb-3">
                           {cuenta.nombre}
                         </CardTitle>
-                        <CardDescription className="text-xl text-cyan-300 ml-16 font-semibold">
+                        <CardDescription className="text-xl text-cyan-300 font-semibold">
                           {cuenta.banco} • {cuenta.numeroCuenta}
                         </CardDescription>
                       </div>
-                      {getTipoCuentaBadge(cuenta.tipoCuenta)}
                     </div>
                   </CardHeader>
                   <CardContent>

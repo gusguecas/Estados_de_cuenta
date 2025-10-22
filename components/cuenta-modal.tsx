@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { createCuenta, updateCuenta } from '@/lib/firestore'
+import { createCuenta, updateCuenta, uploadCuentaLogo } from '@/lib/firestore'
 import type { CuentaBancaria, CuentaBancariaFormData, Moneda, TipoCuenta } from '@/lib/types'
 import {
   Dialog,
@@ -30,8 +30,11 @@ import {
   Calendar,
   FileText,
   User,
-  MapPin
+  MapPin,
+  Upload,
+  X
 } from 'lucide-react'
+import Image from 'next/image'
 
 interface CuentaModalProps {
   open: boolean
@@ -44,6 +47,8 @@ interface CuentaModalProps {
 export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: CuentaModalProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [formData, setFormData] = useState<CuentaBancariaFormData>({
     nombre: '',
     banco: '',
@@ -58,6 +63,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
     diaCorte: undefined,
     diaLimitePago: undefined,
     notas: '',
+    logo: '',
   })
 
   useEffect(() => {
@@ -76,7 +82,10 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
         diaCorte: cuenta.diaCorte,
         diaLimitePago: cuenta.diaLimitePago,
         notas: cuenta.notas || '',
+        logo: cuenta.logo || '',
       })
+      setLogoPreview(cuenta.logo || null)
+      setLogoFile(null)
     } else {
       setFormData({
         nombre: '',
@@ -92,7 +101,10 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
         diaCorte: undefined,
         diaLimitePago: undefined,
         notas: '',
+        logo: '',
       })
+      setLogoPreview(null)
+      setLogoFile(null)
     }
   }, [cuenta, open])
 
@@ -102,15 +114,43 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
 
     try {
       setLoading(true)
+      let logoUrl = formData.logo || ''
+
+      // Limpiar campos undefined, null y strings vacíos para Firestore
+      const dataToClean = { ...formData, logo: logoUrl }
+      const cleanData: any = {}
+
+      Object.entries(dataToClean).forEach(([key, value]) => {
+        // Solo incluir valores que no sean undefined, null, o string vacío
+        if (value !== undefined && value !== null && value !== '') {
+          cleanData[key] = value
+        }
+      })
+
       if (cuenta) {
-        await updateCuenta(cuenta.id, formData)
+        // Editar cuenta existente
+        if (logoFile) {
+          // Si hay un nuevo logo, subirlo
+          logoUrl = await uploadCuentaLogo(logoFile, cuenta.id)
+          cleanData.logo = logoUrl
+        }
+        await updateCuenta(cuenta.id, cleanData)
       } else {
-        await createCuenta(user.uid, empresaId, formData)
+        // Crear nueva cuenta
+        const cuentaId = await createCuenta(user.uid, empresaId, cleanData)
+
+        // Si hay logo, subirlo y actualizar
+        if (logoFile) {
+          logoUrl = await uploadCuentaLogo(logoFile, cuentaId)
+          const logoUpdate: any = { logo: logoUrl }
+          await updateCuenta(cuentaId, logoUpdate)
+        }
       }
       onSuccess()
       onClose()
     } catch (error) {
       console.error('Error al guardar cuenta:', error)
+      alert(`Error al guardar la cuenta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     } finally {
       setLoading(false)
     }
@@ -118,6 +158,38 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
 
   const handleChange = (field: keyof CuentaBancariaFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validar que sea imagen
+      if (!file.type.startsWith('image/')) {
+        alert('Por favor selecciona un archivo de imagen')
+        return
+      }
+
+      // Validar tamaño (máx 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('La imagen debe ser menor a 2MB')
+        return
+      }
+
+      setLogoFile(file)
+
+      // Crear preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null)
+    setLogoPreview(null)
+    setFormData(prev => ({ ...prev, logo: '' }))
   }
 
   return (
@@ -160,7 +232,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                   onChange={(e) => handleChange('nombre', e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
                 />
               </div>
             </div>
@@ -183,7 +255,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     onChange={(e) => handleChange('banco', e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
                   />
                 </div>
               </div>
@@ -198,27 +270,73 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                   onValueChange={(value) => handleChange('tipoCuenta', value as TipoCuenta)}
                   disabled={loading}
                 >
-                  <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-purple-500 focus:ring-purple-500/20">
+                  <SelectTrigger className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white px-5 py-10 focus:border-purple-500 focus:ring-purple-500/20">
                     <div className="flex items-center gap-3">
                       <FileText className="h-8 w-8 text-purple-400" />
                       <SelectValue />
                     </div>
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-700">
-                    <SelectItem value="cheques" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="cheques" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       Cheques
                     </SelectItem>
-                    <SelectItem value="credito" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="credito" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       Crédito
                     </SelectItem>
-                    <SelectItem value="prestamo" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="prestamo" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       Préstamo
                     </SelectItem>
-                    <SelectItem value="ahorro" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="ahorro" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       Ahorro
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Logo del Banco */}
+            <div className="grid gap-4">
+              <Label htmlFor="logo" className="text-2xl font-black text-white flex items-center gap-3">
+                <Upload className="h-7 w-7 text-cyan-400" />
+                Logo del Banco
+              </Label>
+              <div className="flex flex-col gap-4">
+                {logoPreview ? (
+                  <div className="relative w-40 h-40 border-2 border-cyan-500/30 rounded-2xl overflow-hidden bg-slate-900/50 shadow-xl shadow-cyan-500/20">
+                    <Image
+                      src={logoPreview}
+                      alt="Logo preview"
+                      fill
+                      className="object-contain p-3"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 transition-all shadow-lg hover:scale-110"
+                      disabled={loading}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <label
+                      htmlFor="logo-upload"
+                      className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 font-bold text-base transform hover:scale-105"
+                    >
+                      <Upload className="h-6 w-6" />
+                      <span>Subir Logo</span>
+                    </label>
+                    <input
+                      id="logo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                      disabled={loading}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -240,7 +358,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     onChange={(e) => handleChange('numeroCuenta', e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
                   />
                 </div>
               </div>
@@ -261,7 +379,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     onChange={(e) => handleChange('clabe', e.target.value)}
                     maxLength={18}
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500 focus:ring-teal-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500 focus:ring-teal-500/20"
                   />
                 </div>
               </div>
@@ -279,20 +397,20 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                   onValueChange={(value) => handleChange('moneda', value as Moneda)}
                   disabled={loading}
                 >
-                  <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-yellow-500 focus:ring-yellow-500/20">
+                  <SelectTrigger className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white px-5 py-10 focus:border-yellow-500 focus:ring-yellow-500/20">
                     <div className="flex items-center gap-3">
                       <DollarSign className="h-8 w-8 text-yellow-400" />
                       <SelectValue />
                     </div>
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-700">
-                    <SelectItem value="MXN" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="MXN" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇲🇽 Peso Mexicano (MXN)
                     </SelectItem>
-                    <SelectItem value="USD" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="USD" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇺🇸 Dólar Americano (USD)
                     </SelectItem>
-                    <SelectItem value="EUR" className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="EUR" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇪🇺 Euro (EUR)
                     </SelectItem>
                   </SelectContent>
@@ -316,7 +434,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     onChange={(e) => handleChange('saldoInicial', parseFloat(e.target.value) || 0)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-green-500 focus:ring-green-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-green-500 focus:ring-green-500/20"
                   />
                 </div>
               </div>
@@ -338,7 +456,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     value={formData.beneficiario}
                     onChange={(e) => handleChange('beneficiario', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
                   />
                 </div>
               </div>
@@ -357,7 +475,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                     value={formData.sucursal}
                     onChange={(e) => handleChange('sucursal', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
                   />
                 </div>
               </div>
@@ -383,7 +501,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                       value={formData.limiteCredito || 0}
                       onChange={(e) => handleChange('limiteCredito', parseFloat(e.target.value) || 0)}
                       disabled={loading}
-                      className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-red-500 focus:ring-red-500/20"
+                      className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-red-500 focus:ring-red-500/20"
                     />
                   </div>
                 </div>
@@ -399,7 +517,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                       onValueChange={(value) => handleChange('diaCorte', parseInt(value))}
                       disabled={loading}
                     >
-                      <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500/20">
+                      <SelectTrigger className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white px-5 py-10 focus:border-indigo-500 focus:ring-indigo-500/20">
                         <div className="flex items-center gap-3">
                           <Calendar className="h-8 w-8 text-indigo-400" />
                           <SelectValue placeholder="Seleccionar día" />
@@ -407,7 +525,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-slate-700 max-h-80">
                         {Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => (
-                          <SelectItem key={dia} value={dia.toString()} className="text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-3">
+                          <SelectItem key={dia} value={dia.toString()} className="!text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-3">
                             Día {dia}
                           </SelectItem>
                         ))}
@@ -425,7 +543,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                       onValueChange={(value) => handleChange('diaLimitePago', parseInt(value))}
                       disabled={loading}
                     >
-                      <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-violet-500 focus:ring-violet-500/20">
+                      <SelectTrigger className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white px-5 py-10 focus:border-violet-500 focus:ring-violet-500/20">
                         <div className="flex items-center gap-3">
                           <Calendar className="h-8 w-8 text-violet-400" />
                           <SelectValue placeholder="Seleccionar día" />
@@ -433,7 +551,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-slate-700 max-h-80">
                         {Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => (
-                          <SelectItem key={dia} value={dia.toString()} className="text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-3">
+                          <SelectItem key={dia} value={dia.toString()} className="!text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-3">
                             Día {dia}
                           </SelectItem>
                         ))}
@@ -460,7 +578,7 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
                   value={formData.notas}
                   onChange={(e) => handleChange('notas', e.target.value)}
                   disabled={loading}
-                  className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500 focus:ring-slate-500/20"
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500 focus:ring-slate-500/20"
                 />
               </div>
             </div>

@@ -48,6 +48,7 @@ export interface CuentaBancaria {
   diaCorte?: number // Día del mes en que corta la tarjeta (1-31)
   diaLimitePago?: number // Día límite para pagar la tarjeta (1-31)
   notas?: string
+  logo?: string
   activo: boolean
   createdAt: Date
   updatedAt: Date
@@ -127,6 +128,7 @@ export interface CuentaBancariaFormData {
   diaCorte?: number
   diaLimitePago?: number
   notas?: string
+  logo?: string
 }
 
 export interface MovimientoFormData {
@@ -139,6 +141,7 @@ export interface MovimientoFormData {
   beneficiario?: string
   comentarios?: string
   notas?: string
+  adjunto?: string
 }
 
 export interface TransferenciaFormData {

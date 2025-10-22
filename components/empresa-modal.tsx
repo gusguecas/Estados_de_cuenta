@@ -200,7 +200,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     onChange={(e) => handleChange('nombre', e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
                     placeholder="Ej: Acme Corporation"
                   />
                 </div>
@@ -220,7 +220,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.nombreComercial}
                     onChange={(e) => handleChange('nombreComercial', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
                     placeholder="Nombre público de la empresa"
                   />
                 </div>
@@ -248,7 +248,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     onChange={(e) => handleChange('rfc', e.target.value.toUpperCase())}
                     maxLength={formData.moneda === 'MXN' ? 13 : formData.moneda === 'EUR' ? 9 : 10}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-purple-500 focus:ring-purple-500/20 uppercase"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-purple-500 focus:ring-purple-500/20 uppercase"
                     placeholder={
                       formData.moneda === 'MXN'
                         ? 'XAXX010101000'
@@ -322,7 +322,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.giro}
                     onChange={(e) => handleChange('giro', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
                     placeholder="Ej: Tecnología, Retail"
                   />
                 </div>
@@ -338,20 +338,20 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                   onValueChange={(value) => handleChange('moneda', value)}
                   disabled={loading}
                 >
-                  <SelectTrigger className="h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-emerald-500 focus:ring-emerald-500/20">
+                  <SelectTrigger className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-emerald-500 focus:ring-emerald-500/20 px-5 py-10">
                     <div className="flex items-center gap-3">
                       <DollarSign className="h-8 w-8 text-emerald-400" />
                       <SelectValue />
                     </div>
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-700">
-                    <SelectItem value="MXN" className="text-4xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="MXN" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇲🇽 Peso Mexicano (MXN)
                     </SelectItem>
-                    <SelectItem value="USD" className="text-4xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="USD" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇺🇸 Dólar Americano (USD)
                     </SelectItem>
-                    <SelectItem value="EUR" className="text-4xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                    <SelectItem value="EUR" className="!text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                       🇪🇺 Euro (EUR)
                     </SelectItem>
                   </SelectContent>
@@ -375,7 +375,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.ciudad}
                     onChange={(e) => handleChange('ciudad', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
                     placeholder="Ciudad"
                   />
                 </div>
@@ -395,7 +395,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.estado}
                     onChange={(e) => handleChange('estado', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
                     placeholder={formData.moneda === 'MXN' ? 'Estado' : formData.moneda === 'EUR' ? 'Madrid' : 'State'}
                   />
                 </div>
@@ -416,7 +416,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     onChange={(e) => handleChange('codigoPostal', e.target.value)}
                     maxLength={formData.moneda === 'USD' ? 10 : 5}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
                     placeholder={formData.moneda === 'USD' ? '12345' : '00000'}
                   />
                 </div>
@@ -439,7 +439,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.direccion}
                     onChange={(e) => handleChange('direccion', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
                     placeholder="Calle, número, colonia"
                   />
                 </div>
@@ -460,7 +460,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                     value={formData.email}
                     onChange={(e) => handleChange('email', e.target.value)}
                     disabled={loading}
-                    className="pl-20 h-20 text-4xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500/20"
+                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500/20"
                     placeholder="contacto@empresa.com"
                   />
                 </div>
@@ -482,7 +482,7 @@ export function EmpresaModal({ open, onClose, empresa, onSuccess }: EmpresaModal
                   value={formData.telefono}
                   onChange={(e) => handleChange('telefono', e.target.value)}
                   disabled={loading}
-                  className="pl-20 h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-green-500 focus:ring-green-500/20"
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-green-500 focus:ring-green-500/20"
                   placeholder="+52 123 456 7890"
                 />
               </div>

@@ -131,9 +131,9 @@ export function EstadosCuentaCalendar({ cuentaId, onUploadClick, refreshTrigger 
               </select>
               <Button
                 onClick={onUploadClick}
-                className="h-10 px-4 text-sm font-black bg-gradient-to-r from-blue-600 via-cyan-600 to-purple-600 hover:from-blue-500 hover:via-cyan-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transform hover:scale-105 transition-all"
+                className="h-14 px-6 text-lg font-black bg-gradient-to-r from-blue-600 via-cyan-600 to-purple-600 hover:from-blue-500 hover:via-cyan-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transform hover:scale-105 transition-all"
               >
-                <FileText className="mr-2 h-5 w-5" strokeWidth={2.5} />
+                <FileText className="mr-2 h-7 w-7" strokeWidth={2.5} />
                 Subir
               </Button>
             </div>

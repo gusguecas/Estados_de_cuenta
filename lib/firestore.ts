@@ -208,12 +208,15 @@ export async function createMovimiento(
     ? cuenta.saldoActual + data.monto
     : cuenta.saldoActual - data.monto
 
-  // Crear el movimiento
+  // Crear el movimiento con fecha en UTC para evitar problemas de zona horaria
+  const [year, month, day] = data.fecha.split('-').map(Number)
+  const fechaUTC = new Date(Date.UTC(year, month - 1, day))
+
   const movimientoRef = await addDoc(collection(db, 'movimientos'), {
     ...data,
     userId,
     cuentaId,
-    fecha: new Date(data.fecha),
+    fecha: fechaUTC,
     saldoDespues: nuevoSaldo,
     adjunto: adjuntoUrl || null,
     cancelado: false,
@@ -262,7 +265,9 @@ export async function updateMovimiento(id: string, data: Partial<MovimientoFormD
   }
 
   if (data.fecha) {
-    updateData.fecha = new Date(data.fecha)
+    // Usar UTC para evitar problemas de zona horaria
+    const [year, month, day] = data.fecha.split('-').map(Number)
+    updateData.fecha = new Date(Date.UTC(year, month - 1, day))
   }
 
   await updateDoc(docRef, updateData)
@@ -342,7 +347,9 @@ export async function createTransferencia(
   const nuevoSaldoOrigen = cuentaOrigen.saldoActual - monto
   const nuevoSaldoDestino = cuentaDestino.saldoActual + monto
 
-  const fechaMovimiento = new Date(fecha)
+  // Usar UTC para evitar problemas de zona horaria
+  const [year, month, day] = fecha.split('-').map(Number)
+  const fechaMovimiento = new Date(Date.UTC(year, month - 1, day))
   const timestampNow = serverTimestamp()
 
   // Crear el movimiento de SALIDA (egreso en cuenta origen)
@@ -505,6 +512,17 @@ export async function uploadEstadoCuentaPDF(file: File, cuentaId: string, mes: n
 export async function uploadEmpresaLogo(file: File, empresaId: string): Promise<string> {
   const fileExtension = file.name.split('.').pop()
   const fileName = `empresas/${empresaId}/logo.${fileExtension}`
+  const storageRef = ref(storage, fileName)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
+}
+
+export async function uploadCuentaLogo(file: File, cuentaId: string): Promise<string> {
+  const fileExtension = file.name.split('.').pop()
+  const fileName = `cuentas/${cuentaId}/logo.${fileExtension}`
   const storageRef = ref(storage, fileName)
 
   await uploadBytes(storageRef, file)

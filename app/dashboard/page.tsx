@@ -466,22 +466,39 @@ export default function DashboardPage() {
                     } opacity-10 rounded-full -mr-24 -mt-24`}></div>
                     <div className="p-8">
                       <div className="flex items-start justify-between mb-6">
-                        <div className={`p-4 rounded-2xl bg-gradient-to-br ${
-                          urgente ? 'from-red-500 to-orange-500' : proximo ? 'from-orange-500 to-yellow-500' : 'from-blue-500 to-cyan-500'
-                        } shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                          <CreditCard className="h-8 w-8 text-white" strokeWidth={2.5} />
+                        <div className="flex items-center gap-3">
+                          {tarjeta.logo ? (
+                            <div className="relative w-12 h-12 flex items-center justify-center">
+                              <img
+                                src={tarjeta.logo}
+                                alt={tarjeta.banco}
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          ) : (
+                            <div className={`p-4 rounded-2xl bg-gradient-to-br ${
+                              urgente ? 'from-red-500 to-orange-500' : proximo ? 'from-orange-500 to-yellow-500' : 'from-blue-500 to-cyan-500'
+                            } shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                              <CreditCard className="h-8 w-8 text-white" strokeWidth={2.5} />
+                            </div>
+                          )}
+                          <h3 className="text-3xl font-black text-white">{tarjeta.nombre}</h3>
                         </div>
-                        <Badge className={`text-xl px-5 py-2 font-black ${
-                          urgente ? 'bg-red-500/20 text-red-300 border-2 border-red-500/50' : proximo ? 'bg-orange-500/20 text-orange-300 border-2 border-orange-500/50' : 'bg-blue-500/20 text-blue-300 border-2 border-blue-500/50'
-                        }`}>
-                          {tarjeta.diasParaPago === 0 ? 'HOY' :
-                           tarjeta.diasParaPago === 1 ? 'MAÑANA' :
-                           `${tarjeta.diasParaPago} DÍAS`}
-                        </Badge>
+                        <div className="flex flex-col items-end gap-2">
+                          <Badge className={`text-xl px-5 py-2 font-black ${
+                            urgente ? 'bg-red-500/20 text-red-300 border-2 border-red-500/50' : proximo ? 'bg-orange-500/20 text-orange-300 border-2 border-orange-500/50' : 'bg-blue-500/20 text-blue-300 border-2 border-blue-500/50'
+                          }`}>
+                            {tarjeta.diasParaPago === 0 ? 'HOY' :
+                             tarjeta.diasParaPago === 1 ? 'MAÑANA' :
+                             `${tarjeta.diasParaPago} DÍAS`}
+                          </Badge>
+                          <span className="text-4xl">
+                            {tarjeta.moneda === 'MXN' ? '🇲🇽' : tarjeta.moneda === 'USD' ? '🇺🇸' : '🇪🇺'}
+                          </span>
+                        </div>
                       </div>
 
-                      <h3 className="text-3xl font-black text-white mb-2">{tarjeta.nombre}</h3>
-                      <p className="text-lg text-cyan-300 mb-6 font-semibold">{tarjeta.banco}</p>
+                      <p className="text-lg text-cyan-300 mb-6 font-semibold -mt-4">{tarjeta.banco}</p>
 
                       <div className="space-y-4">
                         <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-slate-700">

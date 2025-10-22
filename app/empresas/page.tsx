@@ -97,6 +97,12 @@ export default function EmpresasPage() {
         })
       )
 
+      // Ordenar por moneda
+      empresasWithKPIs.sort((a, b) => {
+        const ordenMonedas: Record<string, number> = { 'MXN': 1, 'USD': 2, 'EUR': 3 }
+        return (ordenMonedas[a.moneda] || 999) - (ordenMonedas[b.moneda] || 999)
+      })
+
       setEmpresas(empresasWithKPIs)
     } catch (error) {
       console.error('Error al cargar empresas:', error)
@@ -194,18 +200,18 @@ export default function EmpresasPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 auto-rows-fr">
             {empresas.map((empresa) => (
               <Card
                 key={empresa.id}
-                className="group relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-cyan-500/30 shadow-2xl hover:shadow-cyan-500/20 transition-all duration-300 cursor-pointer hover:-translate-y-2 hover:border-cyan-500/50 backdrop-blur-sm"
+                className="group relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-cyan-500/30 shadow-2xl hover:shadow-cyan-500/20 transition-all duration-300 cursor-pointer hover:-translate-y-2 hover:border-cyan-500/50 backdrop-blur-sm flex flex-col"
                 onClick={() => router.push(`/empresas/${empresa.id}`)}
               >
                 <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-cyan-500 to-blue-500 opacity-10 rounded-full -mr-24 -mt-24"></div>
-                <CardHeader className="pb-8">
+                <CardHeader className="pb-8 min-h-[180px]">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="flex items-center gap-5 text-4xl font-black text-white">
+                      <CardTitle className="flex items-start gap-5 text-4xl font-black text-white">
                         <div className="relative w-22 h-22 rounded-2xl bg-gradient-to-br from-emerald-500 via-cyan-500 to-blue-500 flex items-center justify-center overflow-hidden shadow-2xl shadow-cyan-500/30">
                           {empresa.logo ? (
                             <Image
@@ -218,15 +224,20 @@ export default function EmpresasPage() {
                             <Building2 className="h-12 w-12 text-white" strokeWidth={2.5} />
                           )}
                         </div>
-                        {empresa.nombre}
+                        <div className="flex flex-col gap-2">
+                          <span>{empresa.nombre}</span>
+                          <span className="text-5xl">
+                            {empresa.moneda === 'MXN' ? '🇲🇽' : empresa.moneda === 'USD' ? '🇺🇸' : '🇪🇺'}
+                          </span>
+                        </div>
                       </CardTitle>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-7 mb-10">
+                <CardContent className="flex-1 flex flex-col">
+                  <div className="space-y-7 mb-10 flex-1">
                     {/* Total de Cuentas */}
-                    <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-xl p-5">
+                    <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-xl p-5 min-h-[120px]">
                       <div className="flex items-center gap-4 mb-3">
                         <Wallet className="h-9 w-9 text-emerald-400" strokeWidth={2.5} />
                         <span className="text-2xl text-emerald-300 font-bold">Total Cuentas</span>
@@ -236,7 +247,7 @@ export default function EmpresasPage() {
 
                     {/* Saldos por Moneda */}
                     {Object.keys(empresa.saldosPorMoneda).length > 0 && (
-                      <div className="bg-cyan-500/10 border-2 border-cyan-500/30 rounded-xl p-5">
+                      <div className="bg-cyan-500/10 border-2 border-cyan-500/30 rounded-xl p-5 min-h-[150px]">
                         <div className="flex items-center gap-4 mb-4">
                           <DollarSign className="h-9 w-9 text-cyan-400" strokeWidth={2.5} />
                           <span className="text-2xl text-cyan-300 font-bold">Saldos</span>
@@ -262,7 +273,7 @@ export default function EmpresasPage() {
 
                     {/* Próximo Pago */}
                     {empresa.proximoPago && (
-                      <div className="bg-orange-500/10 border-2 border-orange-500/30 rounded-xl p-5">
+                      <div className="bg-orange-500/10 border-2 border-orange-500/30 rounded-xl p-5 min-h-[130px]">
                         <div className="flex items-center gap-4 mb-3">
                           <Calendar className="h-9 w-9 text-orange-400" strokeWidth={2.5} />
                           <span className="text-2xl text-orange-300 font-bold">Próximo Pago</span>
