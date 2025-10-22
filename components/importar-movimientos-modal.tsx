@@ -75,8 +75,9 @@ export function ImportarMovimientosModal({
         console.log('📋 Columnas detectadas:', Object.keys(jsonData[0] as Record<string, unknown>))
         console.log('📝 Primera fila de ejemplo:', jsonData[0])
         console.log('💰 Primeras 10 filas con valores CARGO/ABONO:')
-        jsonData.slice(0, 10).forEach((row: Record<string, unknown>, idx: number) => {
-          console.log(`  Fila ${idx + 1}: CONCEPTO="${row.CONCEPTO}", CARGO=${row.CARGO || 'N/A'}, ABONO=${row.ABONO || 'N/A'}`)
+        jsonData.slice(0, 10).forEach((row, idx: number) => {
+          const r = row as Record<string, unknown>
+          console.log(`  Fila ${idx + 1}: CONCEPTO="${r.CONCEPTO}", CARGO=${r.CARGO || 'N/A'}, ABONO=${r.ABONO || 'N/A'}`)
         })
       }
 
@@ -155,15 +156,14 @@ export function ImportarMovimientosModal({
           } else {
             // Crear nueva categoría
             try {
-              const tipoCategoria = tipo === 'transferencia' ? 'egreso' : tipo
-              categoriaId = await createCategoria(user.uid, categoriaValue.trim(), tipoCategoria)
+              categoriaId = await createCategoria(user.uid, categoriaValue.trim(), tipo)
               categoriasCreadas.set(categoriaKey, categoriaId)
 
               // Agregar al array local para que esté disponible para las siguientes filas
               const nuevaCategoria: Categoria = {
                 id: categoriaId,
                 nombre: categoriaValue.trim(),
-                tipo: tipoCategoria,
+                tipo: tipo,
                 userId: user.uid,
                 activo: true
               }

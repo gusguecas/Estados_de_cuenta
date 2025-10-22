@@ -122,7 +122,7 @@ export default function CuentaDetailPage({ params }: PageProps) {
         await deleteMovimiento(mov.id)
       }
       // Recalcular saldos para resetear al saldo inicial
-      await recalcularSaldos(params.id)
+      await recalcularSaldos(cuentaId)
       alert(`✅ Se borraron ${movimientos.length} movimientos exitosamente`)
       await loadData()
     } catch (error) {

@@ -134,10 +134,10 @@ export function CuentaModal({ open, onClose, cuenta, empresaId, onSuccess }: Cue
           logoUrl = await uploadCuentaLogo(logoFile, cuenta.id)
           cleanData.logo = logoUrl
         }
-        await updateCuenta(cuenta.id, cleanData)
+        await updateCuenta(cuenta.id, cleanData as unknown as Partial<CuentaBancariaFormData>)
       } else {
         // Crear nueva cuenta
-        const cuentaId = await createCuenta(user.uid, empresaId, cleanData)
+        const cuentaId = await createCuenta(user.uid, empresaId, cleanData as unknown as CuentaBancariaFormData)
 
         // Si hay logo, subirlo y actualizar
         if (logoFile) {
