@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw } from 'lucide-react'
+import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft } from 'lucide-react'
 import { MovimientoModal } from '@/components/movimiento-modal'
 import { ImportarMovimientosModal } from '@/components/importar-movimientos-modal'
 import { EstadoCuentaModal } from '@/components/estado-cuenta-modal'
