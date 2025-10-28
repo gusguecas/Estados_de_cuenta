@@ -100,10 +100,13 @@ export function ImportarMovimientosModal({
         // Intentar obtener la fecha de diferentes columnas posibles
         const fechaValue = row.FECHA || row.Fecha || row.fecha
 
+        // Función para redondear a 2 decimales y evitar errores de precisión
+        const roundMoney = (value: number) => Math.round(value * 100) / 100
+
         // Determinar tipo y monto basado en Cargo/Abono o PAGO
-        const cargo = parseFloat(String(row.CARGO || row.Cargo || row.cargo || 0))
-        const abono = parseFloat(String(row.ABONO || row.Abono || row.abono || 0))
-        const pago = parseFloat(String(row.PAGO || row.Pago || row.pago || 0))
+        const cargo = roundMoney(parseFloat(String(row.CARGO || row.Cargo || row.cargo || 0)))
+        const abono = roundMoney(parseFloat(String(row.ABONO || row.Abono || row.abono || 0)))
+        const pago = roundMoney(parseFloat(String(row.PAGO || row.Pago || row.pago || 0)))
 
         let tipo: TipoMovimiento = 'egreso'
         let monto = 0

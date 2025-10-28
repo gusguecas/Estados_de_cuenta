@@ -18,9 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft, Sparkles } from 'lucide-react'
 import { MovimientoModal } from '@/components/movimiento-modal'
 import { ImportarMovimientosModal } from '@/components/importar-movimientos-modal'
+import { ImportarEstadoCuentaIAModal } from '@/components/importar-estado-cuenta-ia-modal'
 import { EstadoCuentaModal } from '@/components/estado-cuenta-modal'
 import { TransferenciaModal } from '@/components/transferencia-modal'
 import { EstadosCuentaCalendar } from '@/components/estados-cuenta-calendar'
@@ -50,14 +51,18 @@ export default function CuentaDetailPage({ params }: PageProps) {
   const [cuentaId, setCuentaId] = useState<string>('')
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showImportIAModal, setShowImportIAModal] = useState(false)
   const [showEstadoCuentaModal, setShowEstadoCuentaModal] = useState(false)
   const [showTransferenciaModal, setShowTransferenciaModal] = useState(false)
   const [selectedMovimiento, setSelectedMovimiento] = useState<Movimiento | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filtroFecha, setFiltroFecha] = useState('todos')
   const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [filtroTipo, setFiltroTipo] = useState('todos')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
+  const [montoDesde, setMontoDesde] = useState('')
+  const [montoHasta, setMontoHasta] = useState('')
   const [estadoCuentaRefresh, setEstadoCuentaRefresh] = useState(0)
 
   useEffect(() => {
@@ -185,6 +190,11 @@ export default function CuentaDetailPage({ params }: PageProps) {
       }
     }
 
+    // Filtro de tipo (ingreso/egreso)
+    if (filtroTipo !== 'todos') {
+      filtered = filtered.filter(m => m.tipo === filtroTipo)
+    }
+
     // Filtro de fecha
     const now = new Date()
     if (filtroFecha === 'este-mes') {
@@ -207,6 +217,20 @@ export default function CuentaDetailPage({ params }: PageProps) {
         const hasta = new Date(fechaHasta)
         hasta.setHours(23, 59, 59, 999)
         filtered = filtered.filter(m => new Date(m.fecha) <= hasta)
+      }
+    }
+
+    // Filtro de rango de montos
+    if (montoDesde) {
+      const desde = parseFloat(montoDesde)
+      if (!isNaN(desde)) {
+        filtered = filtered.filter(m => m.monto >= desde)
+      }
+    }
+    if (montoHasta) {
+      const hasta = parseFloat(montoHasta)
+      if (!isNaN(hasta)) {
+        filtered = filtered.filter(m => m.monto <= hasta)
       }
     }
 
@@ -281,25 +305,49 @@ export default function CuentaDetailPage({ params }: PageProps) {
               <p className="text-5xl font-bold bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
                 {formatMoney(cuenta.saldoActual, cuenta.moneda)}
               </p>
+              {cuenta.tipoCuenta === 'credito' && cuenta.limiteCredito && (
+                <p className="text-lg text-emerald-300 mt-2">
+                  de {formatMoney(cuenta.limiteCredito || cuenta.saldoInicial, cuenta.moneda)}
+                </p>
+              )}
             </div>
           </Card>
 
-          <Card className="relative overflow-hidden border border-cyan-500/30 bg-gradient-to-br from-cyan-950/50 via-blue-950/30 to-slate-950/50 backdrop-blur-sm shadow-2xl shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all duration-300 hover:-translate-y-2">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-cyan-500 to-blue-500 opacity-20 rounded-full -mr-20 -mt-20"></div>
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/50">
-                  <Wallet className="h-9 w-9 text-white" strokeWidth={2.5} />
+          {cuenta.tipoCuenta === 'credito' ? (
+            <Card className="relative overflow-hidden border border-red-500/30 bg-gradient-to-br from-red-950/50 via-orange-950/30 to-slate-950/50 backdrop-blur-sm shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 hover:-translate-y-2">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-red-500 to-orange-500 opacity-20 rounded-full -mr-20 -mt-20"></div>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-red-500 to-orange-600 shadow-lg shadow-red-500/50">
+                    <TrendingUp className="h-9 w-9 text-white rotate-180" strokeWidth={2.5} />
+                  </div>
                 </div>
+                <p className="text-2xl font-bold text-white uppercase tracking-wide mb-2">
+                  Adeudo Total
+                </p>
+                <p className="text-5xl font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent">
+                  {formatMoney((cuenta.limiteCredito || cuenta.saldoInicial) - cuenta.saldoActual, cuenta.moneda)}
+                </p>
               </div>
-              <p className="text-2xl font-bold text-white uppercase tracking-wide mb-2">
-                Saldo Inicial
-              </p>
-              <p className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                {formatMoney(cuenta.saldoInicial, cuenta.moneda)}
-              </p>
-            </div>
-          </Card>
+            </Card>
+          ) : (
+            <Card className="relative overflow-hidden border border-cyan-500/30 bg-gradient-to-br from-cyan-950/50 via-blue-950/30 to-slate-950/50 backdrop-blur-sm shadow-2xl shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all duration-300 hover:-translate-y-2">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-cyan-500 to-blue-500 opacity-20 rounded-full -mr-20 -mt-20"></div>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/50">
+                    <Wallet className="h-9 w-9 text-white" strokeWidth={2.5} />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-white uppercase tracking-wide mb-2">
+                  Saldo Inicial
+                </p>
+                <p className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                  {formatMoney(cuenta.saldoInicial, cuenta.moneda)}
+                </p>
+              </div>
+            </Card>
+          )}
 
           <Card className="relative overflow-hidden border border-purple-500/30 bg-gradient-to-br from-purple-950/50 via-pink-950/30 to-slate-950/50 backdrop-blur-sm shadow-2xl shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300 hover:-translate-y-2">
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-purple-500 to-pink-500 opacity-20 rounded-full -mr-20 -mt-20"></div>
@@ -413,6 +461,13 @@ export default function CuentaDetailPage({ params }: PageProps) {
                 Importar Excel
               </Button>
               <Button
+                onClick={() => setShowImportIAModal(true)}
+                className="h-16 px-8 text-xl bg-gradient-to-r from-pink-600 via-purple-600 to-pink-700 hover:from-pink-500 hover:via-purple-500 hover:to-pink-600 text-white shadow-2xl shadow-pink-500/30 hover:shadow-pink-500/50 transition-all border border-pink-400/30 animate-pulse"
+              >
+                <Sparkles className="mr-3 h-8 w-8" strokeWidth={2.5} />
+                Importar con IA 🤖
+              </Button>
+              <Button
                 onClick={() => setShowModal(true)}
                 className="h-16 px-8 text-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 hover:from-cyan-500 hover:via-blue-500 hover:to-purple-500 text-white shadow-2xl shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all border border-cyan-400/30"
               >
@@ -455,12 +510,22 @@ export default function CuentaDetailPage({ params }: PageProps) {
                     className="h-16 pl-16 text-2xl bg-slate-900/50 border-cyan-500/30 text-white placeholder:text-gray-400 focus:border-cyan-500/50 backdrop-blur-sm"
                   />
                 </div>
+                <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+                  <SelectTrigger className="w-64 h-16 text-2xl bg-slate-900/50 border-emerald-500/30 text-white focus:border-emerald-500/50 backdrop-blur-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-emerald-500/30 text-white">
+                    <SelectItem value="todos" className="text-xl font-bold">💸 Todos los tipos</SelectItem>
+                    <SelectItem value="ingreso" className="text-xl">💰 Solo Ingresos</SelectItem>
+                    <SelectItem value="egreso" className="text-xl">🔴 Solo Egresos</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
-                  <SelectTrigger className="w-80 h-16 text-2xl bg-slate-900/50 border-purple-500/30 text-white focus:border-purple-500/50 backdrop-blur-sm">
+                  <SelectTrigger className="w-64 h-16 text-2xl bg-slate-900/50 border-purple-500/30 text-white focus:border-purple-500/50 backdrop-blur-sm">
                     <SelectValue placeholder="Categoría" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-purple-500/30 text-white">
-                    <SelectItem value="todas" className="text-xl font-bold">📁 Todas las categorías</SelectItem>
+                    <SelectItem value="todas" className="text-xl font-bold">📁 Todas</SelectItem>
                     <SelectItem value="sin-categoria" className="text-xl">⚠️ Sin categoría</SelectItem>
                     {Array.from(new Map(categorias.map(c => [c.nombre, c])).values()).map(categoria => (
                       <SelectItem key={categoria.id} value={categoria.id} className="text-xl">
@@ -470,40 +535,80 @@ export default function CuentaDetailPage({ params }: PageProps) {
                   </SelectContent>
                 </Select>
                 <Select value={filtroFecha} onValueChange={setFiltroFecha}>
-                  <SelectTrigger className="w-80 h-16 text-2xl bg-slate-900/50 border-blue-500/30 text-white focus:border-blue-500/50 backdrop-blur-sm">
+                  <SelectTrigger className="w-64 h-16 text-2xl bg-slate-900/50 border-blue-500/30 text-white focus:border-blue-500/50 backdrop-blur-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-blue-500/30 text-white">
-                    <SelectItem value="todos" className="text-xl">📅 Todas las fechas</SelectItem>
+                    <SelectItem value="todos" className="text-xl">📅 Todas</SelectItem>
                     <SelectItem value="este-mes" className="text-xl">📆 Este mes</SelectItem>
-                    <SelectItem value="esta-semana" className="text-xl">🗓️ Esta semana</SelectItem>
-                    <SelectItem value="rango-personalizado" className="text-xl">🔍 Rango personalizado</SelectItem>
+                    <SelectItem value="esta-semana" className="text-xl">🗓️ Semana</SelectItem>
+                    <SelectItem value="rango-personalizado" className="text-xl">🔍 Rango</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {filtroFecha === 'rango-personalizado' && (
-                <div className="flex gap-6 items-center">
+                <div className="flex gap-6 items-center p-6 bg-blue-950/20 border-2 border-blue-500/20 rounded-xl">
+                  <span className="text-2xl text-blue-300 font-bold">📅 Rango de Fechas:</span>
                   <div className="flex items-center gap-3">
-                    <label className="text-2xl text-white font-semibold whitespace-nowrap">Desde:</label>
+                    <label className="text-xl text-white font-semibold whitespace-nowrap">Desde:</label>
                     <Input
                       type="date"
                       value={fechaDesde}
                       onChange={(e) => setFechaDesde(e.target.value)}
-                      className="w-60 h-14 text-xl bg-slate-900/50 border-purple-500/30 text-white focus:border-purple-500/50 backdrop-blur-sm"
+                      className="w-52 h-12 text-lg bg-slate-900/50 border-blue-500/30 text-white focus:border-blue-500/50 backdrop-blur-sm"
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-2xl text-white font-semibold whitespace-nowrap">Hasta:</label>
+                    <label className="text-xl text-white font-semibold whitespace-nowrap">Hasta:</label>
                     <Input
                       type="date"
                       value={fechaHasta}
                       onChange={(e) => setFechaHasta(e.target.value)}
-                      className="w-60 h-14 text-xl bg-slate-900/50 border-purple-500/30 text-white focus:border-purple-500/50 backdrop-blur-sm"
+                      className="w-52 h-12 text-lg bg-slate-900/50 border-blue-500/30 text-white focus:border-blue-500/50 backdrop-blur-sm"
                     />
                   </div>
                 </div>
               )}
+
+              {/* Filtro de rango de montos */}
+              <div className="flex gap-6 items-center p-6 bg-yellow-950/20 border-2 border-yellow-500/20 rounded-xl">
+                <span className="text-2xl text-yellow-300 font-bold">💰 Rango de Montos:</span>
+                <div className="flex items-center gap-3">
+                  <label className="text-xl text-white font-semibold whitespace-nowrap">Desde $:</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={montoDesde}
+                    onChange={(e) => setMontoDesde(e.target.value)}
+                    className="w-44 h-12 text-lg bg-slate-900/50 border-yellow-500/30 text-white focus:border-yellow-500/50 backdrop-blur-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-xl text-white font-semibold whitespace-nowrap">Hasta $:</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="999999.99"
+                    value={montoHasta}
+                    onChange={(e) => setMontoHasta(e.target.value)}
+                    className="w-44 h-12 text-lg bg-slate-900/50 border-yellow-500/30 text-white focus:border-yellow-500/50 backdrop-blur-sm"
+                  />
+                </div>
+                {(montoDesde || montoHasta) && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setMontoDesde('')
+                      setMontoHasta('')
+                    }}
+                    className="text-yellow-300 hover:text-yellow-100 hover:bg-yellow-950/30"
+                  >
+                    ✕ Limpiar
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -690,6 +795,13 @@ export default function CuentaDetailPage({ params }: PageProps) {
         open={showTransferenciaModal}
         onClose={() => setShowTransferenciaModal(false)}
         cuentaOrigenPreseleccionada={cuentaId}
+        onSuccess={loadData}
+      />
+
+      <ImportarEstadoCuentaIAModal
+        open={showImportIAModal}
+        onClose={() => setShowImportIAModal(false)}
+        cuentaId={cuentaId}
         onSuccess={loadData}
       />
     </div>

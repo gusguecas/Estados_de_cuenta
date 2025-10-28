@@ -7,10 +7,18 @@ import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { useEffect, useState, useCallback } from 'react'
 import { MainLayout } from '@/components/main-layout'
-import { getEmpresas, getCuentas, getEmpresa } from '@/lib/firestore'
-import type { Empresa, CuentaBancaria } from '@/lib/types'
+import { getEmpresas, getCuentas, getEmpresa, getAllMovimientos, getCategorias } from '@/lib/firestore'
+import type { Empresa, CuentaBancaria, Movimiento, Categoria } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TransferenciaModal } from '@/components/transferencia-modal'
 import { PaymentAlertModal } from '@/components/payment-alert-modal'
 import { requestNotificationPermission, sendMultiplePaymentNotifications, type PaymentAlert } from '@/lib/notifications'
@@ -26,7 +34,8 @@ import {
   AlertTriangle,
   Calendar,
   Clock,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Search
 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -34,10 +43,21 @@ export default function DashboardPage() {
   const router = useRouter()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
   const [showTransferenciaModal, setShowTransferenciaModal] = useState(false)
   const [showAlertModal, setShowAlertModal] = useState(false)
   const [paymentAlerts, setPaymentAlerts] = useState<PaymentAlert[]>([])
+
+  // Estados para filtros de movimientos
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filtroEmpresa, setFiltroEmpresa] = useState('todas')
+  const [filtroCuenta, setFiltroCuenta] = useState('todas')
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [filtroTipo, setFiltroTipo] = useState('todos')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -50,12 +70,16 @@ export default function DashboardPage() {
 
     try {
       setLoading(true)
-      const [empresasData, cuentasData] = await Promise.all([
+      const [empresasData, cuentasData, movimientosData, categoriasData] = await Promise.all([
         getEmpresas(user.uid),
-        getCuentas(user.uid)
+        getCuentas(user.uid),
+        getAllMovimientos(user.uid),
+        getCategorias(user.uid)
       ])
       setEmpresas(empresasData)
       setCuentas(cuentasData)
+      setMovimientos(movimientosData)
+      setCategorias(categoriasData)
 
       // Calcular alertas de pago
       const alerts: PaymentAlert[] = []
@@ -190,6 +214,59 @@ export default function DashboardPage() {
 
     return dias
   }
+
+  // Función para filtrar movimientos
+  const filtrarMovimientos = () => {
+    let filtered = [...movimientos]
+
+    // Filtro de búsqueda por descripción, beneficiario, referencia, notas
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(m =>
+        m.descripcion?.toLowerCase().includes(term) ||
+        m.beneficiario?.toLowerCase().includes(term) ||
+        m.referencia?.toLowerCase().includes(term) ||
+        m.notas?.toLowerCase().includes(term) ||
+        m.comentarios?.toLowerCase().includes(term)
+      )
+    }
+
+    // Filtro por empresa (filtrar por cuentas de esa empresa)
+    if (filtroEmpresa !== 'todas') {
+      const cuentasDeEmpresa = cuentas.filter(c => c.empresaId === filtroEmpresa).map(c => c.id)
+      filtered = filtered.filter(m => cuentasDeEmpresa.includes(m.cuentaId))
+    }
+
+    // Filtro por cuenta
+    if (filtroCuenta !== 'todas') {
+      filtered = filtered.filter(m => m.cuentaId === filtroCuenta)
+    }
+
+    // Filtro por categoría
+    if (filtroCategoria !== 'todas') {
+      filtered = filtered.filter(m => m.categoriaId === filtroCategoria)
+    }
+
+    // Filtro por tipo (ingreso/egreso)
+    if (filtroTipo !== 'todos') {
+      filtered = filtered.filter(m => m.tipo === filtroTipo)
+    }
+
+    // Filtro por rango de fechas
+    if (fechaDesde) {
+      const desde = new Date(fechaDesde)
+      filtered = filtered.filter(m => m.fecha >= desde)
+    }
+    if (fechaHasta) {
+      const hasta = new Date(fechaHasta)
+      hasta.setHours(23, 59, 59, 999) // Incluir todo el día
+      filtered = filtered.filter(m => m.fecha <= hasta)
+    }
+
+    return filtered
+  }
+
+  const movimientosFiltrados = filtrarMovimientos()
 
   const tarjetasConAlerta = cuentas
     .filter(c => c.tipoCuenta === 'credito' && c.diaLimitePago && c.activo)
@@ -541,6 +618,268 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* Filtros Avanzados de Movimientos */}
+        <div>
+          <h2 className="text-4xl font-black bg-gradient-to-r from-emerald-400 to-cyan-400 text-transparent bg-clip-text mb-8">
+            🔍 Buscador Global de Movimientos
+          </h2>
+          <Card className="relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-cyan-500/30 shadow-2xl backdrop-blur-sm mb-8">
+            <div className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                {/* Búsqueda por texto */}
+                <div className="flex flex-col gap-3 p-6 bg-cyan-950/20 border-2 border-cyan-500/20 rounded-xl">
+                  <label className="text-2xl text-cyan-300 font-bold flex items-center gap-2">
+                    <Search className="h-6 w-6" />
+                    Buscar
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Descripción, beneficiario, notas..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="bg-slate-900/50 border-cyan-500/30 text-white text-lg placeholder:text-slate-500 h-14"
+                  />
+                </div>
+
+                {/* Filtro por empresa */}
+                <div className="flex flex-col gap-3 p-6 bg-indigo-950/20 border-2 border-indigo-500/20 rounded-xl">
+                  <label className="text-2xl text-indigo-300 font-bold flex items-center gap-2">
+                    <Building2 className="h-6 w-6" />
+                    Empresa
+                  </label>
+                  <Select value={filtroEmpresa} onValueChange={setFiltroEmpresa}>
+                    <SelectTrigger className="bg-slate-900/50 border-indigo-500/30 text-white text-lg h-14">
+                      <SelectValue>
+                        {filtroEmpresa === 'todas'
+                          ? '🏢 Todas las empresas'
+                          : filtroEmpresa === 'personal'
+                            ? '👤 Personal'
+                            : `🏢 ${empresas.find(e => e.id === filtroEmpresa)?.nombre || 'Todas las empresas'}`
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700 max-h-80">
+                      <SelectItem value="todas" className="text-lg">🏢 Todas las empresas</SelectItem>
+                      <SelectItem value="personal" className="text-lg">👤 Personal</SelectItem>
+                      {empresas.map((empresa) => (
+                        <SelectItem key={empresa.id} value={empresa.id!} className="text-lg">
+                          🏢 {empresa.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filtro por cuenta */}
+                <div className="flex flex-col gap-3 p-6 bg-blue-950/20 border-2 border-blue-500/20 rounded-xl">
+                  <label className="text-2xl text-blue-300 font-bold flex items-center gap-2">
+                    <Wallet className="h-6 w-6" />
+                    Cuenta
+                  </label>
+                  <Select value={filtroCuenta} onValueChange={setFiltroCuenta}>
+                    <SelectTrigger className="bg-slate-900/50 border-blue-500/30 text-white text-lg h-14">
+                      <SelectValue>
+                        {filtroCuenta === 'todas'
+                          ? '💳 Todas las cuentas'
+                          : (() => {
+                              const cuenta = cuentas.find(c => c.id === filtroCuenta)
+                              return cuenta ? `${cuenta.nombre} - ${cuenta.banco}` : '💳 Todas las cuentas'
+                            })()
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700 max-h-80">
+                      <SelectItem value="todas" className="text-lg">💳 Todas las cuentas</SelectItem>
+                      {cuentas.map((cuenta) => (
+                        <SelectItem key={cuenta.id} value={cuenta.id!} className="text-lg">
+                          {cuenta.nombre} - {cuenta.banco}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filtro por categoría */}
+                <div className="flex flex-col gap-3 p-6 bg-purple-950/20 border-2 border-purple-500/20 rounded-xl">
+                  <label className="text-2xl text-purple-300 font-bold flex items-center gap-2">
+                    <PieChart className="h-6 w-6" />
+                    Categoría
+                  </label>
+                  <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+                    <SelectTrigger className="bg-slate-900/50 border-purple-500/30 text-white text-lg h-14">
+                      <SelectValue>
+                        {filtroCategoria === 'todas'
+                          ? '📊 Todas las categorías'
+                          : categorias.find(c => c.id === filtroCategoria)?.nombre || '📊 Todas las categorías'
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700 max-h-80">
+                      <SelectItem value="todas" className="text-lg">📊 Todas las categorías</SelectItem>
+                      {categorias.map((categoria) => (
+                        <SelectItem key={categoria.id} value={categoria.id!} className="text-lg">
+                          {categoria.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filtro por tipo */}
+                <div className="flex flex-col gap-3 p-6 bg-green-950/20 border-2 border-green-500/20 rounded-xl">
+                  <label className="text-2xl text-green-300 font-bold flex items-center gap-2">
+                    <DollarSign className="h-6 w-6" />
+                    Tipo
+                  </label>
+                  <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+                    <SelectTrigger className="bg-slate-900/50 border-green-500/30 text-white text-lg h-14">
+                      <SelectValue>
+                        {filtroTipo === 'todos'
+                          ? '💸 Todos'
+                          : filtroTipo === 'ingreso'
+                            ? '💰 Ingresos'
+                            : '🔴 Egresos'
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700">
+                      <SelectItem value="todos" className="text-lg">💸 Todos</SelectItem>
+                      <SelectItem value="ingreso" className="text-lg">💰 Ingresos</SelectItem>
+                      <SelectItem value="egreso" className="text-lg">🔴 Egresos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Fecha desde */}
+                <div className="flex flex-col gap-3 p-6 bg-orange-950/20 border-2 border-orange-500/20 rounded-xl">
+                  <label className="text-2xl text-orange-300 font-bold flex items-center gap-2">
+                    <Calendar className="h-6 w-6" />
+                    Desde
+                  </label>
+                  <Input
+                    type="date"
+                    value={fechaDesde}
+                    onChange={(e) => setFechaDesde(e.target.value)}
+                    className="bg-slate-900/50 border-orange-500/30 text-white text-lg h-14"
+                  />
+                </div>
+
+                {/* Fecha hasta */}
+                <div className="flex flex-col gap-3 p-6 bg-orange-950/20 border-2 border-orange-500/20 rounded-xl">
+                  <label className="text-2xl text-orange-300 font-bold flex items-center gap-2">
+                    <Calendar className="h-6 w-6" />
+                    Hasta
+                  </label>
+                  <Input
+                    type="date"
+                    value={fechaHasta}
+                    onChange={(e) => setFechaHasta(e.target.value)}
+                    className="bg-slate-900/50 border-orange-500/30 text-white text-lg h-14"
+                  />
+                </div>
+              </div>
+
+              {/* Botón para limpiar filtros */}
+              {(searchTerm || filtroEmpresa !== 'todas' || filtroCuenta !== 'todas' || filtroCategoria !== 'todas' || filtroTipo !== 'todos' || fechaDesde || fechaHasta) && (
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => {
+                      setSearchTerm('')
+                      setFiltroEmpresa('todas')
+                      setFiltroCuenta('todas')
+                      setFiltroCategoria('todas')
+                      setFiltroTipo('todos')
+                      setFechaDesde('')
+                      setFechaHasta('')
+                    }}
+                    variant="outline"
+                    className="bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white text-lg px-8 py-6 font-bold"
+                  >
+                    ✕ Limpiar todos los filtros
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Resultados de búsqueda */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-cyan-500/30 shadow-2xl backdrop-blur-sm">
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-3xl font-black text-white">
+                  Resultados: {movimientosFiltrados.length} movimiento{movimientosFiltrados.length !== 1 ? 's' : ''}
+                </h3>
+                <p className="text-xl text-slate-400 font-bold">
+                  Total: ${movimientosFiltrados.reduce((sum, m) => sum + (m.tipo === 'ingreso' ? m.monto : -m.monto), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              {movimientosFiltrados.length === 0 ? (
+                <div className="text-center py-20">
+                  <div className="p-10 rounded-3xl bg-gradient-to-br from-cyan-500 via-blue-500 to-purple-500 mb-10 shadow-2xl shadow-cyan-500/30 inline-flex">
+                    <Search className="h-28 w-28 text-white" strokeWidth={2.5} />
+                  </div>
+                  <p className="text-4xl font-black text-white mb-4">
+                    No se encontraron movimientos
+                  </p>
+                  <p className="text-2xl text-cyan-300 font-semibold">
+                    Intenta ajustar los filtros de búsqueda
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[800px] overflow-y-auto pr-4">
+                  {movimientosFiltrados.map((movimiento) => {
+                    const cuenta = cuentas.find(c => c.id === movimiento.cuentaId)
+                    const categoria = categorias.find(c => c.id === movimiento.categoriaId)
+
+                    return (
+                      <div
+                        key={movimiento.id}
+                        className="group relative overflow-hidden flex items-center justify-between p-6 rounded-xl bg-gradient-to-br from-slate-900/50 to-slate-800/50 border-2 border-cyan-500/30 hover:border-cyan-500/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/20"
+                        onClick={() => router.push(`/cuentas/${movimiento.cuentaId}`)}
+                      >
+                        <div className="flex items-center gap-6">
+                          <div className={`p-4 rounded-xl ${movimiento.tipo === 'ingreso' ? 'bg-gradient-to-br from-green-500 to-emerald-500' : 'bg-gradient-to-br from-red-500 to-orange-500'} shadow-lg group-hover:scale-110 transition-transform`}>
+                            <DollarSign className="h-8 w-8 text-white" strokeWidth={2.5} />
+                          </div>
+                          <div>
+                            <p className="text-xl font-black text-white mb-1">{movimiento.descripcion}</p>
+                            <div className="flex items-center gap-4 text-base text-slate-400">
+                              <span className="font-bold">{cuenta?.nombre || 'Cuenta desconocida'}</span>
+                              <span>•</span>
+                              <span>{movimiento.fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                              {categoria && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-purple-400">{categoria.nombre}</span>
+                                </>
+                              )}
+                              {movimiento.beneficiario && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-cyan-400">{movimiento.beneficiario}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-3xl font-black ${movimiento.tipo === 'ingreso' ? 'text-green-400' : 'text-red-400'}`}>
+                            {movimiento.tipo === 'ingreso' ? '+' : '-'}${movimiento.monto.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-base text-slate-400 font-bold mt-1">
+                            {cuenta?.moneda || 'MXN'}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
 
         {/* Recent Activity */}
         <div>

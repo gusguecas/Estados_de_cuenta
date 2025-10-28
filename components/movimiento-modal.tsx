@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { createMovimiento, updateMovimiento, getCategorias, createCategoria, getCuentas, createTransferencia, uploadMovimientoAdjunto } from '@/lib/firestore'
+import { createMovimiento, updateMovimiento, getCategorias, createCategoria, getCuentas, createTransferencia, uploadMovimientoAdjunto, deleteMovimiento } from '@/lib/firestore'
 import type { Movimiento, MovimientoFormData, Categoria, TipoMovimiento, CuentaBancaria } from '@/lib/types'
 import {
   Dialog,
@@ -126,6 +126,7 @@ export function MovimientoModal({
         comentarios: movimiento.comentarios || '',
         notas: movimiento.notas || '',
       })
+      // Permitir convertir en transferencia solo si NO es ya una transferencia
       setEsTransferencia(false)
       setCuentaDestinoId('')
       setArchivoAdjunto(null)
@@ -151,8 +152,8 @@ export function MovimientoModal({
     e.preventDefault()
     if (!user) return
 
-    // Si es una transferencia, validar que haya cuenta destino
-    if (esTransferencia && !movimiento) {
+    // Si es una transferencia (nueva o conversión desde edición)
+    if (esTransferencia) {
       if (!cuentaDestinoId) {
         alert('Debes seleccionar una cuenta destino')
         return
@@ -160,6 +161,13 @@ export function MovimientoModal({
 
       try {
         setLoading(true)
+
+        // Si estamos convirtiendo un movimiento existente en transferencia
+        if (movimiento) {
+          // Borrar el movimiento original
+          await deleteMovimiento(movimiento.id)
+        }
+
         // Crear transferencia
         await createTransferencia(user.uid, {
           fecha: formData.fecha,
@@ -244,8 +252,8 @@ export function MovimientoModal({
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-6 py-6">
-            {/* Pregunta si es transferencia */}
-            {!movimiento && (
+            {/* Pregunta si es transferencia - Mostrar si es nuevo O si es edición de movimiento normal (no transferencia) */}
+            {(!movimiento || (movimiento && !movimiento.cuentaDestinoId && !movimiento.movimientoVinculadoId)) && (
               <div className="p-6 bg-gradient-to-r from-cyan-950/50 to-blue-950/50 border-2 border-cyan-500/30 rounded-2xl shadow-lg shadow-cyan-500/20">
                 <div className="flex items-start gap-4">
                   <input
@@ -264,10 +272,13 @@ export function MovimientoModal({
                   <div className="flex-1">
                     <label htmlFor="esTransferencia" className="text-2xl font-black text-cyan-300 cursor-pointer flex items-center gap-3">
                       <ArrowLeftRight className="h-8 w-8" strokeWidth={2.5} />
-                      ¿Es una transferencia entre cuentas?
+                      {movimiento ? '¿Convertir en transferencia entre cuentas?' : '¿Es una transferencia entre cuentas?'}
                     </label>
                     <p className="text-lg text-slate-300 mt-2 font-semibold">
-                      Marcar esta opción si el dinero va de esta cuenta a otra cuenta tuya (pago de tarjeta, préstamo entre cuentas, etc.)
+                      {movimiento
+                        ? 'Marcar esta opción convertirá este movimiento en una transferencia (se borrará el movimiento actual y se creará la transferencia)'
+                        : 'Marcar esta opción si el dinero va de esta cuenta a otra cuenta tuya (pago de tarjeta, préstamo entre cuentas, etc.)'
+                      }
                     </p>
                   </div>
                 </div>
@@ -275,7 +286,7 @@ export function MovimientoModal({
             )}
 
             {/* Selector de cuenta destino si es transferencia */}
-            {esTransferencia && !movimiento && (
+            {esTransferencia && (
               <div className="grid gap-4">
                 <Label htmlFor="cuentaDestino" className="text-2xl font-black text-white flex items-center gap-3">
                   <Building2 className="h-7 w-7 text-purple-400" />
@@ -481,17 +492,18 @@ export function MovimientoModal({
                 Descripción *
               </Label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                  <FileText className="h-8 w-8 text-cyan-400" />
+                <div className="absolute top-5 left-5 pointer-events-none">
+                  <FileText className="h-6 w-6 text-cyan-400" />
                 </div>
-                <Input
+                <textarea
                   id="descripcion"
                   placeholder={esTransferencia ? "Ej: Pago de tarjeta de crédito, préstamo entre cuentas, etc." : "Concepto del movimiento"}
                   value={formData.descripcion}
                   onChange={(e) => handleChange('descripcion', e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
+                  rows={3}
+                  className="w-full pl-16 pr-5 py-4 text-lg font-semibold bg-slate-900/50 border-2 border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none resize-none"
                 />
               </div>
             </div>

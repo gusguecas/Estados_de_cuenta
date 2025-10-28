@@ -203,10 +203,15 @@ export async function createMovimiento(
     throw new Error('Cuenta no encontrada')
   }
 
+  // Función para redondear a 2 decimales y evitar errores de precisión
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
+
   // Calcular el nuevo saldo
-  const nuevoSaldo = data.tipo === 'ingreso'
-    ? cuenta.saldoActual + data.monto
-    : cuenta.saldoActual - data.monto
+  const nuevoSaldo = roundMoney(
+    data.tipo === 'ingreso'
+      ? cuenta.saldoActual + data.monto
+      : cuenta.saldoActual - data.monto
+  )
 
   // Crear el movimiento con fecha en UTC para evitar problemas de zona horaria
   const [year, month, day] = data.fecha.split('-').map(Number)
@@ -237,6 +242,24 @@ export async function getMovimientos(cuentaId: string): Promise<Movimiento[]> {
   const q = query(
     collection(db, 'movimientos'),
     where('cuentaId', '==', cuentaId),
+    where('cancelado', '==', false),
+    orderBy('fecha', 'desc')
+  )
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fecha: (doc.data().fecha as Timestamp).toDate(),
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as Movimiento[]
+}
+
+export async function getAllMovimientos(userId: string): Promise<Movimiento[]> {
+  const q = query(
+    collection(db, 'movimientos'),
+    where('userId', '==', userId),
     where('cancelado', '==', false),
     orderBy('fecha', 'desc')
   )
@@ -288,6 +311,9 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
     throw new Error('Cuenta no encontrada')
   }
 
+  // Función para redondear a 2 decimales y evitar errores de precisión
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
+
   // Obtener todos los movimientos ordenados por fecha
   const q = query(
     collection(db, 'movimientos'),
@@ -302,9 +328,11 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
   // Recalcular cada movimiento
   for (const docSnap of snapshot.docs) {
     const movimiento = docSnap.data() as Movimiento
-    saldoActual = movimiento.tipo === 'ingreso'
-      ? saldoActual + movimiento.monto
-      : saldoActual - movimiento.monto
+    saldoActual = roundMoney(
+      movimiento.tipo === 'ingreso'
+        ? saldoActual + movimiento.monto
+        : saldoActual - movimiento.monto
+    )
 
     await updateDoc(doc(db, 'movimientos', docSnap.id), {
       saldoDespues: saldoActual,
@@ -343,9 +371,12 @@ export async function createTransferencia(
     throw new Error('No puedes transferir a la misma cuenta')
   }
 
+  // Función para redondear a 2 decimales y evitar errores de precisión
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
+
   // Calcular nuevos saldos
-  const nuevoSaldoOrigen = cuentaOrigen.saldoActual - monto
-  const nuevoSaldoDestino = cuentaDestino.saldoActual + monto
+  const nuevoSaldoOrigen = roundMoney(cuentaOrigen.saldoActual - monto)
+  const nuevoSaldoDestino = roundMoney(cuentaDestino.saldoActual + monto)
 
   // Usar UTC para evitar problemas de zona horaria
   const [year, month, day] = fecha.split('-').map(Number)
