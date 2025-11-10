@@ -141,13 +141,31 @@ export function ImportarEstadoCuentaIAModal({
       // Función para redondear a 2 decimales y evitar errores de precisión
       const roundMoney = (value: number) => Math.round(value * 100) / 100
 
+      // Función para convertir fecha de DD/MM/YYYY a YYYY-MM-DD
+      const convertirFecha = (fecha: string): string => {
+        // Si ya viene en formato YYYY-MM-DD, devolverla tal cual
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+          return fecha
+        }
+
+        // Convertir de DD/MM/YYYY a YYYY-MM-DD
+        const partes = fecha.split('/')
+        if (partes.length === 3) {
+          const [dia, mes, año] = partes
+          return `${año}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
+        }
+
+        // Si no se puede convertir, devolver la fecha original
+        return fecha
+      }
+
       for (const tx of resultado.transacciones) {
         try {
           const monto = tx.abono > 0 ? tx.abono : -tx.cargo
           const tipo = monto > 0 ? 'ingreso' : 'egreso'
 
           await createMovimiento(user.uid, cuentaId, {
-            fecha: tx.fecha,
+            fecha: convertirFecha(tx.fecha),
             descripcion: tx.descripcion,
             monto: roundMoney(Math.abs(monto)),
             tipo: tipo as 'ingreso' | 'egreso',

@@ -7,7 +7,7 @@ Tu tarea es analizar el estado de cuenta bancario en PDF y extraer TODA la infor
 
 IMPORTANTE:
 - Extrae TODAS las transacciones sin omitir ninguna
-- Mantén el formato de fecha exacto como aparece (DD/MM/YYYY o similar)
+- CONVIERTE todas las fechas al formato YYYY-MM-DD (por ejemplo: 2024-01-15)
 - Separa claramente CARGOS (salidas de dinero) y ABONOS (entradas de dinero)
 - Los cargos deben tener monto en el campo "cargo" (positivo) y abono en 0
 - Los abonos deben tener monto en el campo "abono" (positivo) y cargo en 0
@@ -18,8 +18,8 @@ Devuelve la información en formato JSON con esta estructura EXACTA:
   "banco": "Nombre del banco",
   "cuenta": "Número de cuenta o últimos 4 dígitos",
   "titular": "Nombre del titular",
-  "periodo_inicio": "DD/MM/YYYY",
-  "periodo_fin": "DD/MM/YYYY",
+  "periodo_inicio": "YYYY-MM-DD",
+  "periodo_fin": "YYYY-MM-DD",
   "saldo_inicial": 0.00,
   "saldo_final": 0.00,
   "total_cargos": 0.00,
@@ -28,7 +28,7 @@ Devuelve la información en formato JSON con esta estructura EXACTA:
   "num_transacciones": 0,
   "transacciones": [
     {
-      "fecha": "DD/MM/YYYY",
+      "fecha": "YYYY-MM-DD",
       "descripcion": "Descripción del movimiento",
       "referencia": "Número de referencia o null",
       "cargo": 0.00,
