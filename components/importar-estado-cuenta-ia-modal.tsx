@@ -225,8 +225,8 @@ export function ImportarEstadoCuentaIAModal({
                   <FileText className="h-7 w-7 text-purple-400" />
                   Estado de Cuenta PDF
                 </Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                <div className="relative flex items-center">
+                  <div className="absolute left-0 pl-5 flex items-center pointer-events-none">
                     <FileText className="h-8 w-8 text-purple-400" />
                   </div>
                   <Input
@@ -235,7 +235,7 @@ export function ImportarEstadoCuentaIAModal({
                     accept=".pdf"
                     onChange={handleFileChange}
                     disabled={loading}
-                    className="pl-20 h-20 text-xl font-bold bg-slate-900/50 border-slate-700 text-white file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-lg file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 focus:border-purple-500 focus:ring-purple-500/20 file:align-middle"
+                    className="pl-20 h-20 text-xl font-bold bg-slate-900/50 border-slate-700 text-white flex items-center file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-lg file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 focus:border-purple-500 focus:ring-purple-500/20"
                   />
                 </div>
                 {file && (
