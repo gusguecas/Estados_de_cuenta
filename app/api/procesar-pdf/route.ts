@@ -38,7 +38,7 @@ Devuelve la información en formato JSON con esta estructura EXACTA:
     }
   ],
   "procesado_con_ia": true,
-  "modelo_ia": "claude-3-5-sonnet-20240620"
+  "modelo_ia": "claude-sonnet-4-5"
 }`
 
 export async function POST(request: NextRequest) {
@@ -87,7 +87,7 @@ IMPORTANTE:
 
     // Llamar a Claude para analizar el PDF
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
+      model: 'claude-sonnet-4-5',
       max_tokens: 16000,
       messages: [
         {
