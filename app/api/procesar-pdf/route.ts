@@ -44,7 +44,7 @@ Devuelve la información en formato JSON con esta estructura EXACTA:
 export async function POST(request: NextRequest) {
   try {
     // Validar API Key
-    const apiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY
+    const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
       return NextResponse.json(
         { error: 'API key de Anthropic no configurada' },
