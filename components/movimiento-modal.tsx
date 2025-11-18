@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { createMovimiento, updateMovimiento, getCategorias, createCategoria, getCuentas, createTransferencia, uploadMovimientoAdjunto, deleteMovimiento } from '@/lib/firestore'
+import { createMovimiento, updateMovimiento, getCategorias, createCategoria, updateCategoria, deleteCategoria, getCuentas, createTransferencia, uploadMovimientoAdjunto, deleteMovimiento } from '@/lib/firestore'
 import type { Movimiento, MovimientoFormData, Categoria, TipoMovimiento, CuentaBancaria } from '@/lib/types'
 import {
   Dialog,
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeftRight, AlertCircle, DollarSign, Calendar, FileText, Hash, User, MessageSquare, StickyNote, TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, Tag, Building2, Paperclip } from 'lucide-react'
+import { ArrowLeftRight, AlertCircle, DollarSign, Calendar, FileText, Hash, User, MessageSquare, StickyNote, TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, Tag, Building2, Paperclip, Pencil, Trash2, X } from 'lucide-react'
 
 interface MovimientoModalProps {
   open: boolean
@@ -45,6 +45,9 @@ export function MovimientoModal({
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
   const [showNewCategoria, setShowNewCategoria] = useState(false)
   const [newCategoriaNombre, setNewCategoriaNombre] = useState('')
+  const [editingCategoriaId, setEditingCategoriaId] = useState<string | null>(null)
+  const [editingCategoriaNombre, setEditingCategoriaNombre] = useState('')
+  const [showCategoriaActions, setShowCategoriaActions] = useState(false)
   const [esTransferencia, setEsTransferencia] = useState(false)
   const [cuentaDestinoId, setCuentaDestinoId] = useState('')
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([])
@@ -94,6 +97,44 @@ export function MovimientoModal({
     } catch (error) {
       console.error('Error al crear categoría:', error)
       alert('Error al crear la categoría')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEditCategoria = async () => {
+    if (!editingCategoriaId || !editingCategoriaNombre.trim()) return
+
+    try {
+      setLoading(true)
+      await updateCategoria(editingCategoriaId, editingCategoriaNombre.trim())
+      await loadCategorias()
+      setEditingCategoriaId(null)
+      setEditingCategoriaNombre('')
+    } catch (error) {
+      console.error('Error al editar categoría:', error)
+      alert('Error al editar la categoría')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteCategoria = async (categoriaId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta categoría? No se eliminarán los movimientos asociados.')) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      await deleteCategoria(categoriaId)
+      await loadCategorias()
+      // Si la categoría eliminada estaba seleccionada, limpiar la selección
+      if (formData.categoriaId === categoriaId) {
+        setFormData(prev => ({ ...prev, categoriaId: '' }))
+      }
+    } catch (error) {
+      console.error('Error al eliminar categoría:', error)
+      alert('Error al eliminar la categoría')
     } finally {
       setLoading(false)
     }
@@ -426,18 +467,32 @@ export function MovimientoModal({
                       <Tag className="h-7 w-7 text-purple-400" />
                       Categoría
                     </Label>
-                    {!showNewCategoria && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowNewCategoria(true)}
-                        disabled={loading}
-                        className="h-10 px-4 text-base font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                      >
-                        + Nueva
-                      </Button>
-                    )}
+                    <div className="flex gap-2">
+                      {!showNewCategoria && !editingCategoriaId && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowCategoriaActions(!showCategoriaActions)}
+                            disabled={loading}
+                            className="h-10 px-4 text-base font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                          >
+                            {showCategoriaActions ? 'Ocultar' : 'Gestionar'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowNewCategoria(true)}
+                            disabled={loading}
+                            className="h-10 px-4 text-base font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                          >
+                            + Nueva
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {showNewCategoria ? (
@@ -478,26 +533,108 @@ export function MovimientoModal({
                         Cancelar
                       </Button>
                     </div>
+                  ) : editingCategoriaId ? (
+                    <div className="flex gap-3">
+                      <Input
+                        placeholder="Nombre de la categoría"
+                        value={editingCategoriaNombre}
+                        onChange={(e) => setEditingCategoriaNombre(e.target.value)}
+                        disabled={loading}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleEditCategoria()
+                          }
+                        }}
+                        className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
+                      />
+                      <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleEditCategoria}
+                        disabled={loading || !editingCategoriaNombre.trim()}
+                        className="h-16 px-8 text-lg font-bold bg-blue-600 hover:bg-blue-500"
+                      >
+                        Guardar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingCategoriaId(null)
+                          setEditingCategoriaNombre('')
+                        }}
+                        disabled={loading}
+                        className="h-16 px-8 text-lg font-bold bg-slate-900/50 text-slate-300 border-slate-600"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
                   ) : (
-                    <Select
-                      value={formData.categoriaId}
-                      onValueChange={(value) => handleChange('categoriaId', value)}
-                      disabled={loading}
-                    >
-                      <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-purple-500 focus:ring-purple-500/20">
-                        <div className="flex items-center gap-3">
-                          <Tag className="h-8 w-8 text-purple-400" />
-                          <SelectValue placeholder="Selecciona una categoría" />
+                    <>
+                      <Select
+                        value={formData.categoriaId}
+                        onValueChange={(value) => handleChange('categoriaId', value)}
+                        disabled={loading}
+                      >
+                        <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-purple-500 focus:ring-purple-500/20">
+                          <div className="flex items-center gap-3">
+                            <Tag className="h-8 w-8 text-purple-400" />
+                            <SelectValue placeholder="Selecciona una categoría" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-700">
+                          {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id} className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                              {cat.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {showCategoriaActions && categoriasDisponibles.length > 0 && (
+                        <div className="mt-4 p-4 bg-slate-900/70 border border-slate-700 rounded-lg">
+                          <h4 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                            <Tag className="h-5 w-5 text-purple-400" />
+                            Gestionar Categorías
+                          </h4>
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
+                              <div key={cat.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors">
+                                <span className="text-white font-semibold">{cat.nombre}</span>
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingCategoriaId(cat.id)
+                                      setEditingCategoriaNombre(cat.nombre)
+                                      setShowCategoriaActions(false)
+                                    }}
+                                    disabled={loading}
+                                    className="h-8 px-3 text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteCategoria(cat.id)}
+                                    disabled={loading}
+                                    className="h-8 px-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-700">
-                        {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id} className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
-                            {cat.nombre}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      )}
+                    </>
                   )}
                 </div>
               )}

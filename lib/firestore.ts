@@ -490,6 +490,20 @@ export async function createCategoria(userId: string, nombre: string, tipo: 'ing
   return categoriaRef.id
 }
 
+export async function updateCategoria(id: string, nombre: string): Promise<void> {
+  const docRef = doc(db, 'categorias', id)
+  await updateDoc(docRef, {
+    nombre
+  })
+}
+
+export async function deleteCategoria(id: string): Promise<void> {
+  const docRef = doc(db, 'categorias', id)
+  await updateDoc(docRef, {
+    activo: false
+  })
+}
+
 // ============= Estados de Cuenta =============
 
 export async function getEstadosCuenta(cuentaId: string): Promise<EstadoCuenta[]> {
