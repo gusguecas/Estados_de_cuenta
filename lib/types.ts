@@ -78,7 +78,8 @@ export interface Movimiento {
   comentarios?: string
   notas?: string
   saldoDespues: number // Saldo después de este movimiento
-  adjunto?: string // URL del archivo adjunto
+  adjunto?: string // URL del archivo adjunto (legacy - para compatibilidad)
+  adjuntos?: string[] // URLs de los archivos adjuntos (nuevo)
   // Campos para transferencias
   cuentaDestinoId?: string // ID de la cuenta destino (para transferencias)
   movimientoVinculadoId?: string // ID del movimiento relacionado (para transferencias)

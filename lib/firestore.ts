@@ -195,7 +195,7 @@ export async function createMovimiento(
   userId: string,
   cuentaId: string,
   data: MovimientoFormData,
-  adjuntoUrl?: string
+  adjuntosUrls?: string[]
 ): Promise<string> {
   // Obtener la cuenta para calcular el nuevo saldo
   const cuenta = await getCuenta(cuentaId)
@@ -223,7 +223,9 @@ export async function createMovimiento(
     cuentaId,
     fecha: fechaUTC,
     saldoDespues: nuevoSaldo,
-    adjunto: adjuntoUrl || null,
+    adjuntos: adjuntosUrls && adjuntosUrls.length > 0 ? adjuntosUrls : null,
+    // Mantener adjunto para compatibilidad con registros antiguos
+    adjunto: adjuntosUrls && adjuntosUrls.length > 0 ? adjuntosUrls[0] : null,
     cancelado: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
