@@ -162,13 +162,25 @@ export function MovimientoModal({
       try {
         setLoading(true)
 
+        // Subir archivos adjuntos si existen
+        const adjuntosUrls: string[] = []
+        if (archivosAdjuntos.length > 0) {
+          for (const archivo of archivosAdjuntos) {
+            const url = await uploadMovimientoAdjunto(archivo, user.uid, cuentaId)
+            adjuntosUrls.push(url)
+          }
+        }
+
         // Si estamos convirtiendo un movimiento existente en transferencia
         if (movimiento) {
+          // Combinar adjuntos existentes con los nuevos
+          const adjuntosExistentes = movimiento.adjuntos || (movimiento.adjunto ? [movimiento.adjunto] : [])
+          adjuntosUrls.push(...adjuntosExistentes)
           // Borrar el movimiento original
           await deleteMovimiento(movimiento.id)
         }
 
-        // Crear transferencia
+        // Crear transferencia con adjuntos
         await createTransferencia(user.uid, {
           fecha: formData.fecha,
           monto: formData.monto,
@@ -176,7 +188,8 @@ export function MovimientoModal({
           cuentaDestinoId: cuentaDestinoId,
           descripcion: formData.descripcion,
           referencia: formData.referencia,
-          notas: formData.notas
+          notas: formData.notas,
+          adjuntos: adjuntosUrls.length > 0 ? adjuntosUrls : undefined
         })
         onSuccess()
         onClose()

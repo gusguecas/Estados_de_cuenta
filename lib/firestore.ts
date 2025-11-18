@@ -357,7 +357,7 @@ export async function createTransferencia(
   userId: string,
   data: TransferenciaFormData
 ): Promise<{ origenId: string; destinoId: string }> {
-  const { cuentaOrigenId, cuentaDestinoId, monto, fecha, descripcion, referencia, notas } = data
+  const { cuentaOrigenId, cuentaDestinoId, monto, fecha, descripcion, referencia, notas, adjuntos } = data
 
   // Verificar que las cuentas existan y obtener sus datos
   const [cuentaOrigen, cuentaDestino] = await Promise.all([
@@ -398,6 +398,9 @@ export async function createTransferencia(
     saldoDespues: nuevoSaldoOrigen,
     cuentaDestinoId,
     esOrigen: true,
+    // Agregar adjuntos a ambos movimientos
+    adjuntos: adjuntos && adjuntos.length > 0 ? adjuntos : null,
+    adjunto: adjuntos && adjuntos.length > 0 ? adjuntos[0] : null,
     cancelado: false,
     createdAt: timestampNow,
     updatedAt: timestampNow
@@ -416,6 +419,9 @@ export async function createTransferencia(
     saldoDespues: nuevoSaldoDestino,
     cuentaDestinoId: cuentaOrigenId, // La cuenta destino es la origen del movimiento vinculado
     esOrigen: false,
+    // Agregar los MISMOS adjuntos en ambos movimientos
+    adjuntos: adjuntos && adjuntos.length > 0 ? adjuntos : null,
+    adjunto: adjuntos && adjuntos.length > 0 ? adjuntos[0] : null,
     cancelado: false,
     createdAt: timestampNow,
     updatedAt: timestampNow
