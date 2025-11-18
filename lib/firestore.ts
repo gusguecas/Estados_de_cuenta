@@ -43,28 +43,20 @@ export async function createEmpresa(userId: string, data: EmpresaFormData): Prom
 }
 
 export async function getEmpresas(userId: string): Promise<Empresa[]> {
-  console.log('🔍 getEmpresas - userId:', userId)
-  try {
-    const q = query(
-      collection(db, 'empresas'),
-      where('userId', '==', userId),
-      where('activo', '==', true),
-      orderBy('nombre')
-    )
+  const q = query(
+    collection(db, 'empresas'),
+    where('userId', '==', userId),
+    where('activo', '==', true),
+    orderBy('nombre')
+  )
 
-    console.log('📊 Ejecutando query de empresas...')
-    const snapshot = await getDocs(q)
-    console.log('✅ Query exitosa, documentos encontrados:', snapshot.size)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
-      updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
-    })) as Empresa[]
-  } catch (error) {
-    console.error('❌ Error en getEmpresas:', error)
-    throw error
-  }
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as Empresa[]
 }
 
 export async function getEmpresa(id: string): Promise<Empresa | null> {
@@ -117,41 +109,33 @@ export async function createCuenta(userId: string, empresaId: string, data: Cuen
 }
 
 export async function getCuentas(userId: string, empresaId?: string): Promise<CuentaBancaria[]> {
-  console.log('🔍 getCuentas - userId:', userId, 'empresaId:', empresaId)
-  try {
-    let q
+  let q
 
-    if (empresaId) {
-      q = query(
-        collection(db, 'cuentas'),
-        where('userId', '==', userId),
-        where('empresaId', '==', empresaId),
-        where('activo', '==', true),
-        orderBy('nombre')
-      )
-    } else {
-      q = query(
-        collection(db, 'cuentas'),
-        where('userId', '==', userId),
-        where('activo', '==', true),
-        orderBy('nombre')
-      )
-    }
-
-    console.log('📊 Ejecutando query de cuentas...')
-    const snapshot = await getDocs(q)
-    console.log('✅ Query exitosa, documentos encontrados:', snapshot.size)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      fechaApertura: doc.data().fechaApertura ? (doc.data().fechaApertura as Timestamp).toDate() : undefined,
-      createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
-      updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
-    })) as CuentaBancaria[]
-  } catch (error) {
-    console.error('❌ Error en getCuentas:', error)
-    throw error
+  if (empresaId) {
+    q = query(
+      collection(db, 'cuentas'),
+      where('userId', '==', userId),
+      where('empresaId', '==', empresaId),
+      where('activo', '==', true),
+      orderBy('nombre')
+    )
+  } else {
+    q = query(
+      collection(db, 'cuentas'),
+      where('userId', '==', userId),
+      where('activo', '==', true),
+      orderBy('nombre')
+    )
   }
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fechaApertura: doc.data().fechaApertura ? (doc.data().fechaApertura as Timestamp).toDate() : undefined,
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as CuentaBancaria[]
 }
 
 export async function getCuenta(id: string): Promise<CuentaBancaria | null> {
