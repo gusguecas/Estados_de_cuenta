@@ -70,12 +70,21 @@ export default function DashboardPage() {
 
     try {
       setLoading(true)
+      console.log('🔍 Cargando datos para usuario:', user.uid)
       const [empresasData, cuentasData, movimientosData, categoriasData] = await Promise.all([
         getEmpresas(user.uid),
         getCuentas(user.uid),
         getAllMovimientos(user.uid),
         getCategorias(user.uid)
       ])
+      console.log('📊 Datos cargados:', {
+        empresas: empresasData.length,
+        cuentas: cuentasData.length,
+        movimientos: movimientosData.length,
+        categorias: categoriasData.length
+      })
+      console.log('💳 Cuentas encontradas:', cuentasData)
+      console.log('🏢 Empresas encontradas:', empresasData)
       setEmpresas(empresasData)
       setCuentas(cuentasData)
       setMovimientos(movimientosData)
