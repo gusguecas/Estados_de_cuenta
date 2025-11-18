@@ -13,19 +13,25 @@ service cloud.firestore {
 
     // Empresas - users can only access their own
     match /empresas/{empresaId} {
-      allow read, write: if isOwner(resource.data.userId);
+      allow read: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isOwner(resource.data.userId);
       allow create: if isOwner(request.resource.data.userId);
     }
 
     // Cuentas - users can only access their own
     match /cuentas/{cuentaId} {
-      allow read, write: if isOwner(resource.data.userId);
+      allow read: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isOwner(resource.data.userId);
       allow create: if isOwner(request.resource.data.userId);
     }
 
     // Movimientos - users can only access movements of their own accounts
     match /movimientos/{movimientoId} {
-      allow read, write: if isAuthenticated() &&
+      allow read: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isAuthenticated() &&
         exists(/databases/$(database)/documents/cuentas/$(resource.data.cuentaId)) &&
         get(/databases/$(database)/documents/cuentas/$(resource.data.cuentaId)).data.userId == request.auth.uid;
       allow create: if isAuthenticated() &&
@@ -35,13 +41,17 @@ service cloud.firestore {
 
     // Categorias - users can only access their own
     match /categorias/{categoriaId} {
-      allow read, write: if isOwner(resource.data.userId);
+      allow read: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isOwner(resource.data.userId);
       allow create: if isOwner(request.resource.data.userId);
     }
 
     // Estados de cuenta - users can only access their own
     match /estados_cuenta/{estadoId} {
-      allow read, write: if isOwner(resource.data.userId);
+      allow read: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isOwner(resource.data.userId);
       allow create: if isOwner(request.resource.data.userId);
     }
   }
