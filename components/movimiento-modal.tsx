@@ -436,32 +436,32 @@ export function MovimientoModal({
               )}
             </div>
 
-            {/* Segunda fila: Monto y Categoría */}
-            <div className={esTransferencia ? "grid gap-4" : "grid grid-cols-2 gap-6"}>
-              <div className="grid gap-4">
-                <Label htmlFor="monto" className="text-2xl font-black text-white flex items-center gap-3">
-                  <DollarSign className="h-7 w-7 text-yellow-400" />
-                  Monto *
-                </Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                    <DollarSign className="h-8 w-8 text-yellow-400" />
-                  </div>
-                  <Input
-                    id="monto"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.monto}
-                    onChange={(e) => handleChange('monto', parseFloat(e.target.value) || 0)}
-                    required
-                    disabled={loading}
-                    className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
-                  />
+            {/* Monto */}
+            <div className="grid gap-4">
+              <Label htmlFor="monto" className="text-2xl font-black text-white flex items-center gap-3">
+                <DollarSign className="h-7 w-7 text-yellow-400" />
+                Monto *
+              </Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <DollarSign className="h-8 w-8 text-yellow-400" />
                 </div>
+                <Input
+                  id="monto"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.monto}
+                  onChange={(e) => handleChange('monto', parseFloat(e.target.value) || 0)}
+                  required
+                  disabled={loading}
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+                />
               </div>
+            </div>
 
-              <div className="grid gap-4">
+            {/* Categoría */}
+            <div className="grid gap-4">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="categoriaId" className="text-2xl font-black text-white flex items-center gap-3">
                     <Tag className="h-7 w-7 text-purple-400" />
