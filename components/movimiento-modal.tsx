@@ -465,7 +465,7 @@ export function MovimientoModal({
                 <div className="flex items-center justify-between">
                   <Label htmlFor="categoriaId" className="text-2xl font-black text-white flex items-center gap-3">
                     <Tag className="h-7 w-7 text-purple-400" />
-                    Categoría {esTransferencia && '(opcional)'}
+                    Categoría{esTransferencia ? ' (opcional)' : ''}
                   </Label>
                   <div className="flex gap-2">
                     {!showNewCategoria && !editingCategoriaId && (
