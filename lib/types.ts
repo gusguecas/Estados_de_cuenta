@@ -151,6 +151,7 @@ export interface TransferenciaFormData {
   cuentaOrigenId: string
   cuentaDestinoId: string
   descripcion: string
+  categoriaId?: string
   referencia?: string
   notas?: string
   adjuntos?: string[] // URLs de archivos adjuntos

@@ -221,13 +221,14 @@ export function MovimientoModal({
           await deleteMovimiento(movimiento.id)
         }
 
-        // Crear transferencia con adjuntos
+        // Crear transferencia con adjuntos y categoría
         await createTransferencia(user.uid, {
           fecha: formData.fecha,
           monto: formData.monto,
           cuentaOrigenId: cuentaId,
           cuentaDestinoId: cuentaDestinoId,
           descripcion: formData.descripcion,
+          categoriaId: formData.categoriaId || undefined,
           referencia: formData.referencia,
           notas: formData.notas,
           adjuntos: adjuntosUrls.length > 0 ? adjuntosUrls : undefined
@@ -460,40 +461,39 @@ export function MovimientoModal({
                 </div>
               </div>
 
-              {!esTransferencia && (
-                <div className="grid gap-4">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="categoriaId" className="text-2xl font-black text-white flex items-center gap-3">
-                      <Tag className="h-7 w-7 text-purple-400" />
-                      Categoría
-                    </Label>
-                    <div className="flex gap-2">
-                      {!showNewCategoria && !editingCategoriaId && (
-                        <>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowCategoriaActions(!showCategoriaActions)}
-                            disabled={loading}
-                            className="h-10 px-4 text-base font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                          >
-                            {showCategoriaActions ? 'Ocultar' : 'Gestionar'}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowNewCategoria(true)}
-                            disabled={loading}
-                            className="h-10 px-4 text-base font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                          >
-                            + Nueva
-                          </Button>
-                        </>
-                      )}
-                    </div>
+              <div className="grid gap-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="categoriaId" className="text-2xl font-black text-white flex items-center gap-3">
+                    <Tag className="h-7 w-7 text-purple-400" />
+                    Categoría {esTransferencia && '(opcional)'}
+                  </Label>
+                  <div className="flex gap-2">
+                    {!showNewCategoria && !editingCategoriaId && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowCategoriaActions(!showCategoriaActions)}
+                          disabled={loading}
+                          className="h-10 px-4 text-base font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                        >
+                          {showCategoriaActions ? 'Ocultar' : 'Gestionar'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowNewCategoria(true)}
+                          disabled={loading}
+                          className="h-10 px-4 text-base font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                        >
+                          + Nueva
+                        </Button>
+                      </>
+                    )}
                   </div>
+                </div>
 
                   {showNewCategoria ? (
                     <div className="flex gap-3">
@@ -636,9 +636,7 @@ export function MovimientoModal({
                       )}
                     </>
                   )}
-                </div>
-              )}
-            </div>
+              </div>
 
             {/* Descripción */}
             <div className="grid gap-4">
