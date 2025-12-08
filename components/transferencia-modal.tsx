@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { createTransferencia, getCuentas, uploadMovimientoAdjunto } from '@/lib/firestore'
-import type { TransferenciaFormData, CuentaBancaria } from '@/lib/types'
+import { createTransferencia, getCuentas, uploadMovimientoAdjunto, getCategorias, createCategoria, updateCategoria, deleteCategoria } from '@/lib/firestore'
+import type { TransferenciaFormData, CuentaBancaria, Categoria } from '@/lib/types'
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,10 @@ import {
   FileText,
   Hash,
   StickyNote,
-  Paperclip
+  Paperclip,
+  Tag,
+  Pencil,
+  Trash2
 } from 'lucide-react'
 
 interface TransferenciaModalProps {
@@ -51,30 +54,35 @@ export function TransferenciaModal({
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [showNewCategoria, setShowNewCategoria] = useState(false)
+  const [newCategoriaNombre, setNewCategoriaNombre] = useState('')
+  const [editingCategoriaId, setEditingCategoriaId] = useState<string | null>(null)
+  const [editingCategoriaNombre, setEditingCategoriaNombre] = useState('')
+  const [showCategoriaActions, setShowCategoriaActions] = useState(false)
   const [formData, setFormData] = useState<TransferenciaFormData>({
     fecha: new Date().toISOString().split('T')[0],
     monto: 0,
     cuentaOrigenId: '',
     cuentaDestinoId: '',
     descripcion: '',
+    categoriaId: '',
     referencia: '',
     notas: '',
   })
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([])
 
-  useEffect(() => {
-    if (user && open) {
-      loadCuentas()
+  const loadCategorias = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await getCategorias(user.uid)
+      setCategorias(data)
+    } catch (error) {
+      console.error('Error al cargar categorías:', error)
     }
-  }, [user, open])
+  }, [user])
 
-  useEffect(() => {
-    if (cuentaOrigenPreseleccionada) {
-      setFormData(prev => ({ ...prev, cuentaOrigenId: cuentaOrigenPreseleccionada }))
-    }
-  }, [cuentaOrigenPreseleccionada])
-
-  const loadCuentas = async () => {
+  const loadCuentas = useCallback(async () => {
     if (!user) return
     try {
       const data = await getCuentas(user.uid)
@@ -82,7 +90,75 @@ export function TransferenciaModal({
     } catch (error) {
       console.error('Error al cargar cuentas:', error)
     }
+  }, [user])
+
+  const handleCreateCategoria = async () => {
+    if (!user || !newCategoriaNombre.trim()) return
+
+    try {
+      setLoading(true)
+      const newCategoriaId = await createCategoria(user.uid, newCategoriaNombre.trim(), 'egreso')
+      await loadCategorias()
+      setFormData(prev => ({ ...prev, categoriaId: newCategoriaId }))
+      setNewCategoriaNombre('')
+      setShowNewCategoria(false)
+    } catch (error) {
+      console.error('Error al crear categoría:', error)
+      alert('Error al crear la categoría')
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const handleEditCategoria = async () => {
+    if (!editingCategoriaId || !editingCategoriaNombre.trim()) return
+
+    try {
+      setLoading(true)
+      await updateCategoria(editingCategoriaId, editingCategoriaNombre.trim())
+      await loadCategorias()
+      setEditingCategoriaId(null)
+      setEditingCategoriaNombre('')
+    } catch (error) {
+      console.error('Error al editar categoría:', error)
+      alert('Error al editar la categoría')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteCategoria = async (categoriaId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta categoría? No se eliminarán los movimientos asociados.')) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      await deleteCategoria(categoriaId)
+      await loadCategorias()
+      if (formData.categoriaId === categoriaId) {
+        setFormData(prev => ({ ...prev, categoriaId: '' }))
+      }
+    } catch (error) {
+      console.error('Error al eliminar categoría:', error)
+      alert('Error al eliminar la categoría')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (user && open) {
+      loadCategorias()
+      loadCuentas()
+    }
+  }, [user, open, loadCategorias, loadCuentas])
+
+  useEffect(() => {
+    if (cuentaOrigenPreseleccionada) {
+      setFormData(prev => ({ ...prev, cuentaOrigenId: cuentaOrigenPreseleccionada }))
+    }
+  }, [cuentaOrigenPreseleccionada])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,10 +200,16 @@ export function TransferenciaModal({
         cuentaOrigenId: cuentaOrigenPreseleccionada || '',
         cuentaDestinoId: '',
         descripcion: '',
+        categoriaId: '',
         referencia: '',
         notas: '',
       })
       setArchivosAdjuntos([])
+      setShowNewCategoria(false)
+      setNewCategoriaNombre('')
+      setEditingCategoriaId(null)
+      setEditingCategoriaNombre('')
+      setShowCategoriaActions(false)
     } catch (error) {
       console.error('Error al crear transferencia:', error)
       alert('Error al crear la transferencia')
@@ -142,6 +224,7 @@ export function TransferenciaModal({
 
   const cuentaOrigen = cuentas.find(c => c.id === formData.cuentaOrigenId)
   const cuentaDestino = cuentas.find(c => c.id === formData.cuentaDestinoId)
+  const categoriasDisponibles = categorias.filter(c => c.tipo === 'egreso')
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -288,6 +371,184 @@ export function TransferenciaModal({
                 </div>
               </div>
             </div>
+
+            {/* Categoría */}
+            <div className="grid gap-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="categoriaId" className="text-2xl font-black text-white flex items-center gap-3">
+                    <Tag className="h-7 w-7 text-purple-400" />
+                    Categoría (opcional)
+                  </Label>
+                  <div className="flex gap-2">
+                    {!showNewCategoria && !editingCategoriaId && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowCategoriaActions(!showCategoriaActions)}
+                          disabled={loading}
+                          className="h-10 px-4 text-base font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                        >
+                          {showCategoriaActions ? 'Ocultar' : 'Gestionar'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowNewCategoria(true)}
+                          disabled={loading}
+                          className="h-10 px-4 text-base font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                        >
+                          + Nueva
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                  {showNewCategoria ? (
+                    <div className="flex gap-3">
+                      <Input
+                        placeholder="Nombre de la categoría"
+                        value={newCategoriaNombre}
+                        onChange={(e) => setNewCategoriaNombre(e.target.value)}
+                        disabled={loading}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleCreateCategoria()
+                          }
+                        }}
+                        className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
+                      />
+                      <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleCreateCategoria}
+                        disabled={loading || !newCategoriaNombre.trim()}
+                        className="h-16 px-8 text-lg font-bold bg-purple-600 hover:bg-purple-500"
+                      >
+                        Crear
+                      </Button>
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        onClick={() => {
+                          setShowNewCategoria(false)
+                          setNewCategoriaNombre('')
+                        }}
+                        disabled={loading}
+                        className="h-16 px-8 text-lg font-bold bg-slate-900/50 text-slate-300 border-slate-600"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  ) : editingCategoriaId ? (
+                    <div className="flex gap-3">
+                      <Input
+                        placeholder="Nombre de la categoría"
+                        value={editingCategoriaNombre}
+                        onChange={(e) => setEditingCategoriaNombre(e.target.value)}
+                        disabled={loading}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleEditCategoria()
+                          }
+                        }}
+                        className="h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
+                      />
+                      <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleEditCategoria}
+                        disabled={loading || !editingCategoriaNombre.trim()}
+                        className="h-16 px-8 text-lg font-bold bg-blue-600 hover:bg-blue-500"
+                      >
+                        Guardar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingCategoriaId(null)
+                          setEditingCategoriaNombre('')
+                        }}
+                        disabled={loading}
+                        className="h-16 px-8 text-lg font-bold bg-slate-900/50 text-slate-300 border-slate-600"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <Select
+                        value={formData.categoriaId}
+                        onValueChange={(value) => handleChange('categoriaId', value)}
+                        disabled={loading}
+                      >
+                        <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-purple-500 focus:ring-purple-500/20">
+                          <div className="flex items-center gap-3">
+                            <Tag className="h-8 w-8 text-purple-400" />
+                            <SelectValue placeholder="Selecciona una categoría" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-700">
+                          {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id} className="text-2xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                              {cat.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {showCategoriaActions && categoriasDisponibles.length > 0 && (
+                        <div className="mt-4 p-4 bg-slate-900/70 border border-slate-700 rounded-lg">
+                          <h4 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                            <Tag className="h-5 w-5 text-purple-400" />
+                            Gestionar Categorías
+                          </h4>
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {Array.from(new Map(categoriasDisponibles.map(c => [c.nombre, c])).values()).map((cat) => (
+                              <div key={cat.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors">
+                                <span className="text-white font-semibold">{cat.nombre}</span>
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingCategoriaId(cat.id)
+                                      setEditingCategoriaNombre(cat.nombre)
+                                      setShowCategoriaActions(false)
+                                    }}
+                                    disabled={loading}
+                                    className="h-8 px-3 text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteCategoria(cat.id)}
+                                    disabled={loading}
+                                    className="h-8 px-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+              </div>
 
             {/* Descripción */}
             <div className="grid gap-4">
