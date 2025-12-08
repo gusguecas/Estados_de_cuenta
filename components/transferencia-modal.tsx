@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { createTransferencia, getCuentas } from '@/lib/firestore'
+import { createTransferencia, getCuentas, uploadMovimientoAdjunto } from '@/lib/firestore'
 import type { TransferenciaFormData, CuentaBancaria } from '@/lib/types'
 import {
   Dialog,
@@ -31,7 +31,8 @@ import {
   DollarSign,
   FileText,
   Hash,
-  StickyNote
+  StickyNote,
+  Paperclip
 } from 'lucide-react'
 
 interface TransferenciaModalProps {
@@ -59,6 +60,7 @@ export function TransferenciaModal({
     referencia: '',
     notas: '',
   })
+  const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([])
 
   useEffect(() => {
     if (user && open) {
@@ -98,7 +100,21 @@ export function TransferenciaModal({
 
     try {
       setLoading(true)
-      await createTransferencia(user.uid, formData)
+
+      // Subir archivos adjuntos si existen
+      const adjuntosUrls: string[] = []
+      if (archivosAdjuntos.length > 0) {
+        for (const archivo of archivosAdjuntos) {
+          const url = await uploadMovimientoAdjunto(archivo, user.uid, formData.cuentaOrigenId)
+          adjuntosUrls.push(url)
+        }
+      }
+
+      // Crear transferencia con adjuntos
+      await createTransferencia(user.uid, {
+        ...formData,
+        adjuntos: adjuntosUrls.length > 0 ? adjuntosUrls : undefined
+      })
       onSuccess()
       onClose()
       // Resetear form
@@ -111,6 +127,7 @@ export function TransferenciaModal({
         referencia: '',
         notas: '',
       })
+      setArchivosAdjuntos([])
     } catch (error) {
       console.error('Error al crear transferencia:', error)
       alert('Error al crear la transferencia')
@@ -335,6 +352,75 @@ export function TransferenciaModal({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Archivos Adjuntos */}
+            <div className="grid gap-4">
+              <Label htmlFor="adjuntos" className="text-2xl font-black text-white flex items-center gap-3">
+                <Paperclip className="h-7 w-7 text-purple-400" />
+                Comprobantes / Adjuntos
+              </Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <Paperclip className="h-8 w-8 text-purple-400" />
+                </div>
+                <Input
+                  id="adjuntos"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || [])
+                    if (files.length > 0) {
+                      setArchivosAdjuntos(prev => [...prev, ...files])
+                      // Limpiar el input para permitir seleccionar los mismos archivos de nuevo
+                      e.target.value = ''
+                    }
+                  }}
+                  disabled={loading}
+                  className="pl-20 h-20 py-6 text-xl font-bold bg-slate-900/50 border-slate-700 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-lg file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 focus:border-purple-500 focus:ring-purple-500/20"
+                />
+              </div>
+
+              {/* Mostrar archivos nuevos seleccionados */}
+              {archivosAdjuntos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-lg font-bold text-purple-300">Archivos a subir ({archivosAdjuntos.length}):</p>
+                  {archivosAdjuntos.map((archivo, index) => (
+                    <div key={index} className="p-4 bg-purple-500/10 border-2 border-purple-500/30 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Paperclip className="h-6 w-6 text-purple-400" />
+                        <div>
+                          <p className="text-lg text-white font-semibold">
+                            {archivo.name}
+                          </p>
+                          <p className="text-base text-purple-400">
+                            Tamaño: {(archivo.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setArchivosAdjuntos(prev => prev.filter((_, i) => i !== index))
+                        }}
+                        disabled={loading}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-bold"
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {archivosAdjuntos.length === 0 && (
+                <p className="text-base text-slate-400 italic">
+                  Puedes seleccionar múltiples archivos a la vez (PDF, JPG, PNG)
+                </p>
+              )}
             </div>
 
             {/* Preview de la transferencia */}
