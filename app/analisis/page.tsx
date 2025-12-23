@@ -582,22 +582,62 @@ export default function AnalisisPage() {
                     <CreditCard className="h-5 w-5 text-cyan-400" />
                     Cuentas ({cuentasSeleccionadas.length > 0 ? cuentasSeleccionadas.length + ' seleccionadas' : 'todas'})
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {cuentas.map(cuenta => (
-                      <button
-                        key={cuenta.id}
-                        onClick={() => toggleCuenta(cuenta.id)}
-                        className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
-                          cuentasSeleccionadas.includes(cuenta.id)
-                            ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
-                            : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white border border-slate-700'
-                        }`}
-                      >
-                        {cuenta.nombre}
-                        {cuentasSeleccionadas.includes(cuenta.id) && <X className="h-3 w-3 ml-2 inline" />}
-                      </button>
-                    ))}
-                  </div>
+
+                  {/* Cuentas de Empresas */}
+                  {cuentas.filter(c => c.empresaId !== 'personal').length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Empresas
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {cuentas.filter(c => c.empresaId !== 'personal').map(cuenta => {
+                          const empresa = empresas.find(e => e.id === cuenta.empresaId)
+                          return (
+                            <button
+                              key={cuenta.id}
+                              onClick={() => toggleCuenta(cuenta.id)}
+                              className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                                cuentasSeleccionadas.includes(cuenta.id)
+                                  ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
+                                  : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white border border-emerald-500/30'
+                              }`}
+                            >
+                              {cuenta.nombre}
+                              {empresa && <span className="text-xs ml-1 opacity-70">({empresa.nombre})</span>}
+                              {cuentasSeleccionadas.includes(cuenta.id) && <X className="h-3 w-3 ml-2 inline" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cuentas Personales */}
+                  {cuentas.filter(c => c.empresaId === 'personal').length > 0 && (
+                    <div>
+                      <p className="text-sm font-bold text-purple-400 mb-2 flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Personal
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {cuentas.filter(c => c.empresaId === 'personal').map(cuenta => (
+                          <button
+                            key={cuenta.id}
+                            onClick={() => toggleCuenta(cuenta.id)}
+                            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                              cuentasSeleccionadas.includes(cuenta.id)
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                                : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white border border-purple-500/30'
+                            }`}
+                          >
+                            {cuenta.nombre}
+                            {cuentasSeleccionadas.includes(cuenta.id) && <X className="h-3 w-3 ml-2 inline" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Categorías */}
