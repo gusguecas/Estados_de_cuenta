@@ -689,7 +689,7 @@ export default function CuentaDetailPage({ params }: PageProps) {
                       <TableCell className="text-center">
                         <div className="flex flex-col items-center">
                           <p className="text-xl font-bold text-white flex items-center gap-2">
-                            {movimiento.cuentaDestinoId && (
+                            {(movimiento.cuentaDestinoId || movimiento.movimientoVinculadoId) && (
                               <ArrowLeftRight className="h-7 w-7 text-cyan-400" strokeWidth={2.5} />
                             )}
                             {movimiento.descripcion}
@@ -697,11 +697,25 @@ export default function CuentaDetailPage({ params }: PageProps) {
                           {movimiento.beneficiario && (
                             <p className="text-lg text-cyan-300 mt-1">{movimiento.beneficiario}</p>
                           )}
-                          {movimiento.cuentaDestinoId && (
-                            <p className="text-lg text-blue-400 font-semibold flex items-center gap-1 mt-1">
-                              {movimiento.esOrigen ? '→' : '←'}{' '}
-                              {cuentas.find(c => c.id === movimiento.cuentaDestinoId)?.nombre || 'Cuenta relacionada'}
-                            </p>
+                          {(movimiento.cuentaDestinoId || movimiento.movimientoVinculadoId) && (
+                            <div className="mt-2 px-4 py-2 bg-gradient-to-r from-blue-600/30 to-cyan-600/30 border border-blue-500/50 rounded-lg">
+                              <p className="text-xl text-cyan-300 font-bold flex items-center gap-2">
+                                {movimiento.esOrigen ? (
+                                  <>
+                                    <span className="text-red-400">→</span>
+                                    <span>Destino:</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-green-400">←</span>
+                                    <span>Origen:</span>
+                                  </>
+                                )}
+                                <span className="text-white">
+                                  {cuentas.find(c => c.id === movimiento.cuentaDestinoId)?.nombre || 'Cuenta vinculada'}
+                                </span>
+                              </p>
+                            </div>
                           )}
                         </div>
                       </TableCell>
