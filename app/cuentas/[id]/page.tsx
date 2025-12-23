@@ -107,10 +107,16 @@ export default function CuentaDetailPage({ params }: PageProps) {
     if (!confirm('¿Estás seguro de cancelar este movimiento?')) return
 
     try {
+      setLoading(true)
       await deleteMovimiento(id)
+      // Esperar un momento para que Firestore procese los cambios
+      await new Promise(resolve => setTimeout(resolve, 500))
       await loadData()
     } catch (error) {
       console.error('Error al cancelar movimiento:', error)
+      alert('Error al cancelar el movimiento')
+    } finally {
+      setLoading(false)
     }
   }
 
