@@ -498,7 +498,8 @@ export function MovimientoModal({
                   type="number"
                   step="0.01"
                   min="0"
-                  value={formData.monto}
+                  placeholder="0.00"
+                  value={formData.monto === 0 ? '' : formData.monto}
                   onChange={(e) => handleChange('monto', parseFloat(e.target.value) || 0)}
                   required
                   disabled={loading}
