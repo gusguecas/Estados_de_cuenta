@@ -50,6 +50,7 @@ export function MovimientoModal({
   const [showCategoriaActions, setShowCategoriaActions] = useState(false)
   const [esTransferencia, setEsTransferencia] = useState(false)
   const [cuentaDestinoId, setCuentaDestinoId] = useState('')
+  const [cuentaSeleccionadaId, setCuentaSeleccionadaId] = useState(cuentaId)
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([])
   const [formData, setFormData] = useState<MovimientoFormData>({
     fecha: new Date().toISOString().split('T')[0],
@@ -77,11 +78,13 @@ export function MovimientoModal({
     if (!user) return
     try {
       const data = await getCuentas(user.uid)
-      setCuentas(data.filter(c => c.activo && c.id !== cuentaId))
+      // Si estamos editando, mostrar todas las cuentas para poder cambiar
+      // Si es nuevo y es transferencia, excluir la cuenta actual
+      setCuentas(data.filter(c => c.activo))
     } catch (error) {
       console.error('Error al cargar cuentas:', error)
     }
-  }, [user, cuentaId])
+  }, [user])
 
   const handleCreateCategoria = async () => {
     if (!user || !newCategoriaNombre.trim()) return
@@ -170,6 +173,7 @@ export function MovimientoModal({
       // Permitir convertir en transferencia solo si NO es ya una transferencia
       setEsTransferencia(false)
       setCuentaDestinoId('')
+      setCuentaSeleccionadaId(movimiento.cuentaId || cuentaId)
       setArchivosAdjuntos([])
     } else {
       setFormData({
@@ -185,9 +189,10 @@ export function MovimientoModal({
       })
       setEsTransferencia(false)
       setCuentaDestinoId('')
+      setCuentaSeleccionadaId(cuentaId)
       setArchivosAdjuntos([])
     }
-  }, [movimiento, open])
+  }, [movimiento, open, cuentaId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -251,7 +256,7 @@ export function MovimientoModal({
       const adjuntosUrls: string[] = []
       if (archivosAdjuntos.length > 0) {
         for (const archivo of archivosAdjuntos) {
-          const url = await uploadMovimientoAdjunto(archivo, user.uid, cuentaId)
+          const url = await uploadMovimientoAdjunto(archivo, user.uid, cuentaSeleccionadaId)
           adjuntosUrls.push(url)
         }
       }
@@ -260,10 +265,15 @@ export function MovimientoModal({
         // Si hay nuevos adjuntos, agregarlos a los existentes
         const adjuntosExistentes = movimiento.adjuntos || (movimiento.adjunto ? [movimiento.adjunto] : [])
         const todosLosAdjuntos = [...adjuntosExistentes, ...adjuntosUrls]
-        const updateData = adjuntosUrls.length > 0 ? { ...formData, adjuntos: todosLosAdjuntos } : formData
+        const updateData = {
+          ...formData,
+          ...(adjuntosUrls.length > 0 ? { adjuntos: todosLosAdjuntos } : {}),
+          // Incluir cuentaId si cambió
+          ...(cuentaSeleccionadaId !== movimiento.cuentaId ? { cuentaId: cuentaSeleccionadaId } : {})
+        }
         await updateMovimiento(movimiento.id, updateData)
       } else {
-        await createMovimiento(user.uid, cuentaId, formData, adjuntosUrls)
+        await createMovimiento(user.uid, cuentaSeleccionadaId, formData, adjuntosUrls)
       }
       onSuccess()
       onClose()
@@ -345,6 +355,43 @@ export function MovimientoModal({
               </div>
             )}
 
+            {/* Selector para cambiar de cuenta (solo al editar y si NO es transferencia) */}
+            {movimiento && !esTransferencia && (
+              <div className="p-6 bg-gradient-to-r from-amber-950/50 to-orange-950/50 border-2 border-amber-500/30 rounded-2xl shadow-lg shadow-amber-500/20">
+                <div className="grid gap-4">
+                  <Label htmlFor="cuentaSeleccionada" className="text-2xl font-black text-white flex items-center gap-3">
+                    <Building2 className="h-7 w-7 text-amber-400" />
+                    Cuenta del Movimiento
+                  </Label>
+                  <Select
+                    value={cuentaSeleccionadaId}
+                    onValueChange={setCuentaSeleccionadaId}
+                    disabled={loading}
+                  >
+                    <SelectTrigger className="h-20 text-2xl font-bold bg-slate-900/50 border-slate-700 text-white focus:border-amber-500 focus:ring-amber-500/20">
+                      <div className="flex items-center gap-3">
+                        <Building2 className="h-8 w-8 text-amber-400" />
+                        <SelectValue placeholder="Selecciona la cuenta" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700">
+                      {cuentas.map((cuenta) => (
+                        <SelectItem key={cuenta.id} value={cuenta.id} className="text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
+                          {cuenta.nombre} - {cuenta.banco} (${cuenta.saldoActual.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {cuentaSeleccionadaId !== (movimiento?.cuentaId || cuentaId) && (
+                    <p className="text-lg text-amber-300 font-semibold flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5" />
+                      El movimiento se moverá a la cuenta seleccionada
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Selector de cuenta destino si es transferencia */}
             {esTransferencia && (
               <div className="grid gap-4">
@@ -364,7 +411,7 @@ export function MovimientoModal({
                     </div>
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-700">
-                    {cuentas.map((cuenta) => (
+                    {cuentas.filter(c => c.id !== cuentaId).map((cuenta) => (
                       <SelectItem key={cuenta.id} value={cuenta.id} className="text-xl font-bold text-white hover:bg-slate-800 cursor-pointer py-4">
                         {cuenta.nombre} - {cuenta.banco} (${cuenta.saldoActual.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
                       </SelectItem>

@@ -284,6 +284,10 @@ export async function updateMovimiento(id: string, data: Partial<MovimientoFormD
     throw new Error('Movimiento no encontrado')
   }
 
+  const movimientoData = movimiento.data()
+  const cuentaIdAnterior = movimientoData.cuentaId
+  const cuentaIdNueva = data.cuentaId
+
   const updateData: Record<string, unknown> = {
     ...data,
     updatedAt: serverTimestamp()
@@ -296,14 +300,61 @@ export async function updateMovimiento(id: string, data: Partial<MovimientoFormD
   }
 
   await updateDoc(docRef, updateData)
+
+  // Si cambió la cuenta, recalcular saldos de ambas cuentas
+  if (cuentaIdNueva && cuentaIdNueva !== cuentaIdAnterior) {
+    await recalcularSaldos(cuentaIdAnterior)
+    await recalcularSaldos(cuentaIdNueva)
+  } else if (cuentaIdAnterior) {
+    // Si no cambió la cuenta, solo recalcular la cuenta actual
+    await recalcularSaldos(cuentaIdAnterior)
+  }
 }
 
 export async function deleteMovimiento(id: string): Promise<void> {
   const docRef = doc(db, 'movimientos', id)
+  const movimientoSnap = await getDoc(docRef)
+
+  if (!movimientoSnap.exists()) {
+    throw new Error('Movimiento no encontrado')
+  }
+
+  const movimientoData = movimientoSnap.data()
+  const cuentaId = movimientoData.cuentaId
+  const movimientoVinculadoId = movimientoData.movimientoVinculadoId
+
+  // Cancelar el movimiento principal
   await updateDoc(docRef, {
     cancelado: true,
     updatedAt: serverTimestamp()
   })
+
+  // Si es una transferencia (tiene movimiento vinculado), cancelar también el otro lado
+  if (movimientoVinculadoId) {
+    const vinculadoRef = doc(db, 'movimientos', movimientoVinculadoId)
+    const vinculadoSnap = await getDoc(vinculadoRef)
+
+    if (vinculadoSnap.exists()) {
+      const vinculadoData = vinculadoSnap.data()
+      const cuentaVinculadaId = vinculadoData.cuentaId
+
+      // Cancelar el movimiento vinculado
+      await updateDoc(vinculadoRef, {
+        cancelado: true,
+        updatedAt: serverTimestamp()
+      })
+
+      // Recalcular saldos de la cuenta vinculada
+      if (cuentaVinculadaId) {
+        await recalcularSaldos(cuentaVinculadaId)
+      }
+    }
+  }
+
+  // Recalcular saldos de la cuenta principal
+  if (cuentaId) {
+    await recalcularSaldos(cuentaId)
+  }
 }
 
 export async function recalcularSaldos(cuentaId: string): Promise<void> {

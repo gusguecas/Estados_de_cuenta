@@ -143,6 +143,7 @@ export interface MovimientoFormData {
   comentarios?: string
   notas?: string
   adjunto?: string
+  cuentaId?: string // Para cambiar de cuenta al editar
 }
 
 export interface TransferenciaFormData {
