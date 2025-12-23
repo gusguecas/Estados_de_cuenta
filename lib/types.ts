@@ -154,6 +154,7 @@ export interface TransferenciaFormData {
   descripcion: string
   categoriaId?: string
   referencia?: string
+  beneficiario?: string
   notas?: string
   adjuntos?: string[] // URLs de archivos adjuntos
 }

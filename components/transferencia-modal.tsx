@@ -35,7 +35,8 @@ import {
   Paperclip,
   Tag,
   Pencil,
-  Trash2
+  Trash2,
+  User
 } from 'lucide-react'
 
 interface TransferenciaModalProps {
@@ -68,6 +69,7 @@ export function TransferenciaModal({
     descripcion: '',
     categoriaId: '',
     referencia: '',
+    beneficiario: '',
     notas: '',
   })
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([])
@@ -202,6 +204,7 @@ export function TransferenciaModal({
         descripcion: '',
         categoriaId: '',
         referencia: '',
+        beneficiario: '',
         notas: '',
       })
       setArchivosAdjuntos([])
@@ -568,6 +571,27 @@ export function TransferenciaModal({
                   required
                   disabled={loading}
                   className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:ring-cyan-500/20"
+                />
+              </div>
+            </div>
+
+            {/* Beneficiario */}
+            <div className="grid gap-4">
+              <Label htmlFor="beneficiario" className="text-2xl font-black text-white flex items-center gap-3">
+                <User className="h-7 w-7 text-pink-400" />
+                Beneficiario / Destinatario
+              </Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <User className="h-8 w-8 text-pink-400" />
+                </div>
+                <Input
+                  id="beneficiario"
+                  placeholder="Nombre del beneficiario o destinatario"
+                  value={formData.beneficiario}
+                  onChange={(e) => handleChange('beneficiario', e.target.value)}
+                  disabled={loading}
+                  className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-pink-500/20"
                 />
               </div>
             </div>
