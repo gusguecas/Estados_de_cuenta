@@ -186,10 +186,16 @@ export default function AnalisisPage() {
       resultado = resultado.filter(m => m.fecha <= hasta)
     }
 
-    // Filtro por categorías
+    // Filtro por categorías (buscar por nombre para incluir duplicados)
     if (categoriasSeleccionadas.length > 0) {
+      const nombresCategoriasSeleccionadas = categoriasSeleccionadas
+        .map(id => categorias.find(c => c.id === id)?.nombre)
+        .filter(Boolean)
+      const idsCategoriasConMismoNombre = categorias
+        .filter(c => nombresCategoriasSeleccionadas.includes(c.nombre))
+        .map(c => c.id)
       resultado = resultado.filter(m =>
-        m.categoriaId && categoriasSeleccionadas.includes(m.categoriaId)
+        m.categoriaId && idsCategoriasConMismoNombre.includes(m.categoriaId)
       )
     }
 
@@ -601,7 +607,8 @@ export default function AnalisisPage() {
                     Categorías ({categoriasSeleccionadas.length > 0 ? categoriasSeleccionadas.length + ' seleccionadas' : 'todas'})
                   </label>
                   <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
-                    {categorias.map(cat => (
+                    {/* Eliminar duplicados por nombre */}
+                    {Array.from(new Map(categorias.map(c => [c.nombre, c])).values()).map(cat => (
                       <button
                         key={cat.id}
                         onClick={() => toggleCategoria(cat.id)}
