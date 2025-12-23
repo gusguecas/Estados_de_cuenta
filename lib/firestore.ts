@@ -321,21 +321,89 @@ export async function deleteMovimiento(id: string): Promise<void> {
 
   const movimientoData = movimientoSnap.data()
   const cuentaId = movimientoData.cuentaId
-  const movimientoVinculadoId = movimientoData.movimientoVinculadoId
+  let movimientoVinculadoId = movimientoData.movimientoVinculadoId
+  const cuentaDestinoId = movimientoData.cuentaDestinoId
+
+  console.log('🗑️ Eliminando movimiento:', id)
+  console.log('  - cuentaId:', cuentaId)
+  console.log('  - movimientoVinculadoId:', movimientoVinculadoId)
+  console.log('  - cuentaDestinoId:', cuentaDestinoId)
 
   // Cancelar el movimiento principal
   await updateDoc(docRef, {
     cancelado: true,
     updatedAt: serverTimestamp()
   })
+  console.log('✅ Movimiento principal cancelado')
 
-  // Si es una transferencia (tiene movimiento vinculado), cancelar también el otro lado
-  if (movimientoVinculadoId) {
-    const vinculadoRef = doc(db, 'movimientos', movimientoVinculadoId)
-    const vinculadoSnap = await getDoc(vinculadoRef)
+  // Si es una transferencia, buscar y cancelar el movimiento vinculado
+  // Puede tener movimientoVinculadoId directo, o podemos buscarlo por cuentaDestinoId
+  if (movimientoVinculadoId || cuentaDestinoId) {
+    let vinculadoRef = null
+    let vinculadoSnap = null
+    let vinculadoData = null
 
-    if (vinculadoSnap.exists()) {
-      const vinculadoData = vinculadoSnap.data()
+    // Primero intentar con movimientoVinculadoId si existe
+    if (movimientoVinculadoId) {
+      vinculadoRef = doc(db, 'movimientos', movimientoVinculadoId)
+      vinculadoSnap = await getDoc(vinculadoRef)
+      if (vinculadoSnap.exists()) {
+        vinculadoData = vinculadoSnap.data()
+        console.log('✅ Encontrado movimiento vinculado por ID:', movimientoVinculadoId)
+      }
+    }
+
+    // Si no encontramos por ID, buscar por criterios de transferencia
+    if (!vinculadoData && cuentaDestinoId) {
+      console.log('🔍 Buscando movimiento vinculado en cuenta:', cuentaDestinoId)
+
+      // Buscar movimiento en la cuenta destino con el mismo monto, fecha similar y que nos apunte
+      const fechaMovimiento = movimientoData.fecha
+      const montoMovimiento = movimientoData.monto
+      const tipoOpuesto = movimientoData.tipo === 'egreso' ? 'ingreso' : 'egreso'
+
+      const qVinculado = query(
+        collection(db, 'movimientos'),
+        where('cuentaId', '==', cuentaDestinoId),
+        where('cancelado', '==', false),
+        where('tipo', '==', tipoOpuesto),
+        where('monto', '==', montoMovimiento)
+      )
+
+      const vinculadosSnapshot = await getDocs(qVinculado)
+
+      // Buscar el que coincida mejor (mismo movimientoVinculadoId que apunte a nosotros, o misma fecha)
+      for (const docSnap of vinculadosSnapshot.docs) {
+        const data = docSnap.data()
+        // Verificar si nos apunta directamente
+        if (data.movimientoVinculadoId === id) {
+          vinculadoRef = doc(db, 'movimientos', docSnap.id)
+          vinculadoSnap = docSnap
+          vinculadoData = data
+          movimientoVinculadoId = docSnap.id
+          console.log('✅ Encontrado movimiento vinculado que nos apunta:', docSnap.id)
+          break
+        }
+        // O verificar si tiene la misma cuentaDestinoId apuntando a nuestra cuenta
+        if (data.cuentaDestinoId === cuentaId) {
+          // Verificar fecha similar (mismo día)
+          const fechaVinculado = data.fecha?.toDate ? data.fecha.toDate() : new Date(data.fecha)
+          const fechaOriginal = fechaMovimiento?.toDate ? fechaMovimiento.toDate() : new Date(fechaMovimiento)
+
+          if (fechaVinculado.toDateString() === fechaOriginal.toDateString()) {
+            vinculadoRef = doc(db, 'movimientos', docSnap.id)
+            vinculadoSnap = docSnap
+            vinculadoData = data
+            movimientoVinculadoId = docSnap.id
+            console.log('✅ Encontrado movimiento vinculado por criterios:', docSnap.id)
+            break
+          }
+        }
+      }
+    }
+
+    // Si encontramos el movimiento vinculado, cancelarlo
+    if (vinculadoData && vinculadoRef) {
       const cuentaVinculadaId = vinculadoData.cuentaId
 
       // Cancelar el movimiento vinculado
@@ -343,17 +411,22 @@ export async function deleteMovimiento(id: string): Promise<void> {
         cancelado: true,
         updatedAt: serverTimestamp()
       })
+      console.log('✅ Movimiento vinculado cancelado:', movimientoVinculadoId)
 
       // Recalcular saldos de la cuenta vinculada
       if (cuentaVinculadaId) {
         await recalcularSaldos(cuentaVinculadaId)
+        console.log('✅ Saldos recalculados para cuenta vinculada:', cuentaVinculadaId)
       }
+    } else {
+      console.log('⚠️ No se encontró movimiento vinculado para cancelar')
     }
   }
 
   // Recalcular saldos de la cuenta principal
   if (cuentaId) {
     await recalcularSaldos(cuentaId)
+    console.log('✅ Saldos recalculados para cuenta principal:', cuentaId)
   }
 }
 
