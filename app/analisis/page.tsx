@@ -22,8 +22,16 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Activity,
-  Target
+  Target,
+  Filter,
+  X,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  CreditCard
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { MainLayout } from '@/components/main-layout'
 
 interface CategoriaConTotal {
@@ -54,6 +62,15 @@ export default function AnalisisPage() {
   const [totalIngresos, setTotalIngresos] = useState(0)
   const [totalEgresos, setTotalEgresos] = useState(0)
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState<'todo' | '12meses' | '6meses' | '3meses' | 'mes'>('todo')
+
+  // Filtros avanzados
+  const [mostrarFiltros, setMostrarFiltros] = useState(false)
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+  const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<string[]>([])
+  const [cuentasSeleccionadas, setCuentasSeleccionadas] = useState<string[]>([])
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<'todos' | 'ingreso' | 'egreso'>('todos')
+  const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -130,32 +147,119 @@ export default function AnalisisPage() {
     }).format(amount)
   }
 
-  // Filtrar movimientos por período
-  const filtrarPorPeriodo = (movimientos: Movimiento[]) => {
-    const hoy = new Date()
-    let fechaInicio: Date
+  // Filtrar movimientos con todos los filtros
+  const aplicarFiltros = (movimientos: Movimiento[]) => {
+    let resultado = [...movimientos]
 
-    switch (periodoSeleccionado) {
-      case 'mes':
-        fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-        break
-      case '3meses':
-        fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth() - 3, 1)
-        break
-      case '6meses':
-        fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1)
-        break
-      case '12meses':
-        fechaInicio = new Date(hoy.getFullYear() - 1, hoy.getMonth(), 1)
-        break
-      default:
-        return movimientos
+    // Filtro por período rápido
+    if (periodoSeleccionado !== 'todo' && !fechaDesde && !fechaHasta) {
+      const hoy = new Date()
+      let fechaInicio: Date
+
+      switch (periodoSeleccionado) {
+        case 'mes':
+          fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+          break
+        case '3meses':
+          fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth() - 3, 1)
+          break
+        case '6meses':
+          fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1)
+          break
+        case '12meses':
+          fechaInicio = new Date(hoy.getFullYear() - 1, hoy.getMonth(), 1)
+          break
+        default:
+          fechaInicio = new Date(0)
+      }
+      resultado = resultado.filter(m => m.fecha >= fechaInicio)
     }
 
-    return movimientos.filter(m => m.fecha >= fechaInicio)
+    // Filtro por rango de fechas personalizado
+    if (fechaDesde) {
+      const desde = new Date(fechaDesde)
+      resultado = resultado.filter(m => m.fecha >= desde)
+    }
+    if (fechaHasta) {
+      const hasta = new Date(fechaHasta)
+      hasta.setHours(23, 59, 59, 999)
+      resultado = resultado.filter(m => m.fecha <= hasta)
+    }
+
+    // Filtro por categorías
+    if (categoriasSeleccionadas.length > 0) {
+      resultado = resultado.filter(m =>
+        m.categoriaId && categoriasSeleccionadas.includes(m.categoriaId)
+      )
+    }
+
+    // Filtro por cuentas
+    if (cuentasSeleccionadas.length > 0) {
+      resultado = resultado.filter(m =>
+        m.cuentaId && cuentasSeleccionadas.includes(m.cuentaId)
+      )
+    }
+
+    // Filtro por tipo
+    if (tipoSeleccionado !== 'todos') {
+      resultado = resultado.filter(m => m.tipo === tipoSeleccionado)
+    }
+
+    // Filtro por búsqueda de texto
+    if (busqueda.trim()) {
+      const busquedaLower = busqueda.toLowerCase()
+      resultado = resultado.filter(m =>
+        m.descripcion?.toLowerCase().includes(busquedaLower) ||
+        m.beneficiario?.toLowerCase().includes(busquedaLower) ||
+        m.referencia?.toLowerCase().includes(busquedaLower) ||
+        m.comentarios?.toLowerCase().includes(busquedaLower) ||
+        m.notas?.toLowerCase().includes(busquedaLower)
+      )
+    }
+
+    return resultado
   }
 
-  const movimientosFiltrados = filtrarPorPeriodo(todosMovimientos)
+  const movimientosFiltrados = aplicarFiltros(todosMovimientos)
+
+  // Función para limpiar filtros
+  const limpiarFiltros = () => {
+    setFechaDesde('')
+    setFechaHasta('')
+    setCategoriasSeleccionadas([])
+    setCuentasSeleccionadas([])
+    setTipoSeleccionado('todos')
+    setBusqueda('')
+    setPeriodoSeleccionado('todo')
+  }
+
+  // Toggle categoría
+  const toggleCategoria = (catId: string) => {
+    setCategoriasSeleccionadas(prev =>
+      prev.includes(catId)
+        ? prev.filter(id => id !== catId)
+        : [...prev, catId]
+    )
+  }
+
+  // Toggle cuenta
+  const toggleCuenta = (cuentaId: string) => {
+    setCuentasSeleccionadas(prev =>
+      prev.includes(cuentaId)
+        ? prev.filter(id => id !== cuentaId)
+        : [...prev, cuentaId]
+    )
+  }
+
+  // Contar filtros activos
+  const filtrosActivos = [
+    fechaDesde,
+    fechaHasta,
+    categoriasSeleccionadas.length > 0,
+    cuentasSeleccionadas.length > 0,
+    tipoSeleccionado !== 'todos',
+    busqueda.trim()
+  ].filter(Boolean).length
 
   // Calcular totales filtrados
   const ingresosFiltrados = movimientosFiltrados.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.monto, 0)
@@ -338,23 +442,187 @@ export default function AnalisisPage() {
           </div>
         </div>
 
-        {/* Filtro de período */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="text-xl font-bold text-gray-400">Período:</span>
-          {periodos.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriodoSeleccionado(p.id as typeof periodoSeleccionado)}
-              className={`px-6 py-3 rounded-xl font-bold text-lg transition-all ${
-                periodoSeleccionado === p.id
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30'
-                  : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* Panel de Filtros Avanzados */}
+        <Card className="bg-gradient-to-br from-slate-950/50 to-indigo-950/50 border-2 border-indigo-500/30">
+          <div className="p-6">
+            {/* Header del panel */}
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={() => setMostrarFiltros(!mostrarFiltros)}
+                className="flex items-center gap-3 text-2xl font-black text-white hover:text-indigo-300 transition-colors"
+              >
+                <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600">
+                  <Filter className="h-6 w-6 text-white" />
+                </div>
+                Filtros Avanzados
+                {filtrosActivos > 0 && (
+                  <span className="px-3 py-1 text-sm rounded-full bg-indigo-500 text-white">
+                    {filtrosActivos} activo{filtrosActivos > 1 ? 's' : ''}
+                  </span>
+                )}
+                {mostrarFiltros ? <ChevronUp className="h-6 w-6" /> : <ChevronDown className="h-6 w-6" />}
+              </button>
+
+              {filtrosActivos > 0 && (
+                <Button
+                  onClick={limpiarFiltros}
+                  variant="outline"
+                  className="text-red-400 border-red-500/50 hover:bg-red-500/10"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Limpiar filtros
+                </Button>
+              )}
+            </div>
+
+            {/* Filtros rápidos de período */}
+            <div className="flex items-center gap-3 flex-wrap mb-4">
+              <span className="text-lg font-bold text-gray-400">Período rápido:</span>
+              {periodos.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setPeriodoSeleccionado(p.id as typeof periodoSeleccionado)
+                    setFechaDesde('')
+                    setFechaHasta('')
+                  }}
+                  className={`px-4 py-2 rounded-lg font-bold text-base transition-all ${
+                    periodoSeleccionado === p.id && !fechaDesde && !fechaHasta
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30'
+                      : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Filtros expandidos */}
+            {mostrarFiltros && (
+              <div className="space-y-6 pt-6 border-t border-slate-700">
+                {/* Búsqueda por texto */}
+                <div>
+                  <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                    <Search className="h-5 w-5 text-cyan-400" />
+                    Buscar en descripción
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Buscar por descripción, beneficiario, referencia..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    className="h-14 text-lg bg-slate-900/50 border-slate-700 text-white"
+                  />
+                </div>
+
+                {/* Rango de fechas */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-blue-400" />
+                      Fecha desde
+                    </label>
+                    <Input
+                      type="date"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                      className="h-14 text-lg bg-slate-900/50 border-slate-700 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-blue-400" />
+                      Fecha hasta
+                    </label>
+                    <Input
+                      type="date"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                      className="h-14 text-lg bg-slate-900/50 border-slate-700 text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Tipo de movimiento */}
+                <div>
+                  <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-purple-400" />
+                    Tipo de movimiento
+                  </label>
+                  <div className="flex gap-3">
+                    {[
+                      { id: 'todos', label: 'Todos', color: 'from-gray-500 to-slate-600' },
+                      { id: 'ingreso', label: 'Ingresos', color: 'from-green-500 to-emerald-600' },
+                      { id: 'egreso', label: 'Egresos', color: 'from-red-500 to-orange-600' }
+                    ].map(tipo => (
+                      <button
+                        key={tipo.id}
+                        onClick={() => setTipoSeleccionado(tipo.id as typeof tipoSeleccionado)}
+                        className={`px-6 py-3 rounded-xl font-bold text-lg transition-all ${
+                          tipoSeleccionado === tipo.id
+                            ? `bg-gradient-to-r ${tipo.color} text-white shadow-lg`
+                            : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white'
+                        }`}
+                      >
+                        {tipo.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cuentas */}
+                <div>
+                  <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-cyan-400" />
+                    Cuentas ({cuentasSeleccionadas.length > 0 ? cuentasSeleccionadas.length + ' seleccionadas' : 'todas'})
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {cuentas.map(cuenta => (
+                      <button
+                        key={cuenta.id}
+                        onClick={() => toggleCuenta(cuenta.id)}
+                        className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                          cuentasSeleccionadas.includes(cuenta.id)
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                            : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white border border-slate-700'
+                        }`}
+                      >
+                        {cuenta.nombre}
+                        {cuentasSeleccionadas.includes(cuenta.id) && <X className="h-3 w-3 ml-2 inline" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Categorías */}
+                <div>
+                  <label className="text-lg font-bold text-gray-300 mb-3 flex items-center gap-2">
+                    <Tag className="h-5 w-5 text-orange-400" />
+                    Categorías ({categoriasSeleccionadas.length > 0 ? categoriasSeleccionadas.length + ' seleccionadas' : 'todas'})
+                  </label>
+                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                    {categorias.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => toggleCategoria(cat.id)}
+                        className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                          categoriasSeleccionadas.includes(cat.id)
+                            ? cat.tipo === 'ingreso'
+                              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+                              : 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg'
+                            : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700/50 hover:text-white border border-slate-700'
+                        }`}
+                      >
+                        {cat.tipo === 'ingreso' ? '↑' : '↓'} {cat.nombre}
+                        {categoriasSeleccionadas.includes(cat.id) && <X className="h-3 w-3 ml-2 inline" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
 
         {/* Resumen del período */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -405,6 +673,93 @@ export default function AnalisisPage() {
             </div>
           </Card>
         </div>
+
+        {/* Tabla de Movimientos Filtrados */}
+        {(filtrosActivos > 0 || busqueda.trim()) && (
+          <div>
+            <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-8 flex items-center gap-4">
+              <Search className="h-10 w-10 text-indigo-400" />
+              Resultados Filtrados ({movimientosFiltrados.length} movimientos)
+            </h2>
+            <Card className="bg-gradient-to-br from-slate-950/50 to-indigo-950/30 border-2 border-indigo-500/30">
+              <CardContent className="p-6">
+                {movimientosFiltrados.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Search className="h-16 w-16 text-gray-600 mx-auto mb-4" />
+                    <p className="text-xl text-gray-400">No hay movimientos que coincidan con los filtros</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                    {movimientosFiltrados
+                      .sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
+                      .slice(0, 100)
+                      .map((mov) => {
+                        const categoria = categorias.find(c => c.id === mov.categoriaId)
+                        const cuenta = cuentas.find(c => c.id === mov.cuentaId)
+                        return (
+                          <div
+                            key={mov.id}
+                            className={`flex items-center gap-4 p-4 rounded-xl transition-colors border-l-4 ${
+                              mov.tipo === 'ingreso'
+                                ? 'bg-green-950/20 border-green-500 hover:bg-green-950/30'
+                                : 'bg-red-950/20 border-red-500 hover:bg-red-950/30'
+                            }`}
+                          >
+                            <div className={`p-3 rounded-xl ${
+                              mov.tipo === 'ingreso'
+                                ? 'bg-gradient-to-br from-green-500 to-emerald-600'
+                                : 'bg-gradient-to-br from-red-500 to-orange-600'
+                            }`}>
+                              {mov.tipo === 'ingreso'
+                                ? <ArrowUpCircle className="h-6 w-6 text-white" />
+                                : <ArrowDownCircle className="h-6 w-6 text-white" />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-lg font-bold text-white truncate">{mov.descripcion}</p>
+                              <div className="flex items-center gap-3 text-sm text-gray-400 flex-wrap">
+                                <span>{mov.fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                {cuenta && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-cyan-400">{cuenta.nombre}</span>
+                                  </>
+                                )}
+                                {categoria && (
+                                  <>
+                                    <span>•</span>
+                                    <span className={mov.tipo === 'ingreso' ? 'text-emerald-400' : 'text-orange-400'}>
+                                      {categoria.nombre}
+                                    </span>
+                                  </>
+                                )}
+                                {mov.beneficiario && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-purple-400">{mov.beneficiario}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <p className={`text-xl font-black ${
+                              mov.tipo === 'ingreso' ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {mov.tipo === 'ingreso' ? '+' : '-'}{formatMoney(mov.monto)}
+                            </p>
+                          </div>
+                        )
+                      })}
+                    {movimientosFiltrados.length > 100 && (
+                      <p className="text-center text-gray-500 py-4">
+                        Mostrando los primeros 100 de {movimientosFiltrados.length} movimientos
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Gráfica de Tendencia Mensual */}
         <div>
