@@ -78,12 +78,11 @@ export default function CuentaDetailPage({ params }: PageProps) {
     }
   }, [user, authLoading, router])
 
-  const loadData = useCallback(async (detectNewMovimiento = false) => {
+  const loadData = useCallback(async (detectNewMovimiento = false, movimientosActuales: typeof movimientos = []) => {
     if (!user || !cuentaId) return
 
     try {
       setLoading(true)
-      const movimientosAnteriores = movimientos.map(m => m.id)
 
       const [cuentaData, movimientosData, categoriasData, todasLasCuentas] = await Promise.all([
         getCuenta(cuentaId),
@@ -97,14 +96,16 @@ export default function CuentaDetailPage({ params }: PageProps) {
       setCuentas(todasLasCuentas)
 
       // Detectar si hay un nuevo movimiento para poder deshacerlo
-      if (detectNewMovimiento && movimientosData.length > 0) {
+      if (detectNewMovimiento && movimientosData.length > 0 && movimientosActuales.length > 0) {
+        const movimientosAnterioresIds = movimientosActuales.map(m => m.id)
+
         // Buscar el movimiento más reciente (por createdAt)
         const movimientoMasReciente = movimientosData.reduce((prev, current) => {
           return (prev.createdAt > current.createdAt) ? prev : current
         })
 
         // Verificar si es realmente nuevo (no existía antes)
-        if (!movimientosAnteriores.includes(movimientoMasReciente.id)) {
+        if (!movimientosAnterioresIds.includes(movimientoMasReciente.id)) {
           setUltimoMovimientoId(movimientoMasReciente.id)
           setUltimoMovimientoInfo({
             tipo: movimientoMasReciente.tipo,
@@ -119,7 +120,7 @@ export default function CuentaDetailPage({ params }: PageProps) {
     } finally {
       setLoading(false)
     }
-  }, [user, cuentaId, movimientos])
+  }, [user, cuentaId])
 
   useEffect(() => {
     if (user && cuentaId) {
@@ -973,14 +974,14 @@ export default function CuentaDetailPage({ params }: PageProps) {
         }}
         movimiento={selectedMovimiento}
         cuentaId={cuentaId}
-        onSuccess={() => loadData(true)}
+        onSuccess={() => loadData(true, movimientos)}
       />
 
       <ImportarMovimientosModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
         cuentaId={cuentaId}
-        onSuccess={() => loadData(true)}
+        onSuccess={() => loadData(true, movimientos)}
       />
 
       <EstadoCuentaModal
@@ -997,14 +998,14 @@ export default function CuentaDetailPage({ params }: PageProps) {
         open={showTransferenciaModal}
         onClose={() => setShowTransferenciaModal(false)}
         cuentaOrigenPreseleccionada={cuentaId}
-        onSuccess={() => loadData(true)}
+        onSuccess={() => loadData(true, movimientos)}
       />
 
       <ImportarEstadoCuentaIAModal
         open={showImportIAModal}
         onClose={() => setShowImportIAModal(false)}
         cuentaId={cuentaId}
-        onSuccess={() => loadData(true)}
+        onSuccess={() => loadData(true, movimientos)}
       />
     </div>
   )
