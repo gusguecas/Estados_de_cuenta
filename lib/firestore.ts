@@ -10,7 +10,8 @@ import {
   where,
   serverTimestamp,
   orderBy,
-  Timestamp
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from './firebase'
@@ -451,7 +452,13 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
   const snapshot = await getDocs(q)
   let saldoActual = cuenta.saldoInicial
 
-  // Recalcular cada movimiento
+  console.log(`📊 Recalculando ${snapshot.size} movimientos para cuenta ${cuentaId}`)
+
+  // Usar batch writes para mayor velocidad (máximo 500 por batch)
+  const BATCH_SIZE = 500
+  let batch = writeBatch(db)
+  let operationsInBatch = 0
+
   for (const docSnap of snapshot.docs) {
     const movimiento = docSnap.data() as Movimiento
     saldoActual = roundMoney(
@@ -460,17 +467,35 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
         : saldoActual - movimiento.monto
     )
 
-    await updateDoc(doc(db, 'movimientos', docSnap.id), {
-      saldoDespues: saldoActual,
-      updatedAt: serverTimestamp()
-    })
+    // Solo actualizar si el saldo cambió
+    if (movimiento.saldoDespues !== saldoActual) {
+      batch.update(doc(db, 'movimientos', docSnap.id), {
+        saldoDespues: saldoActual
+      })
+      operationsInBatch++
+
+      // Si llegamos al límite del batch, ejecutarlo y crear uno nuevo
+      if (operationsInBatch >= BATCH_SIZE) {
+        await batch.commit()
+        batch = writeBatch(db)
+        operationsInBatch = 0
+      }
+    }
   }
 
-  // Actualizar el saldo final de la cuenta
-  await updateDoc(doc(db, 'cuentas', cuentaId), {
+  // Agregar la actualización de la cuenta al batch final
+  batch.update(doc(db, 'cuentas', cuentaId), {
     saldoActual,
     updatedAt: serverTimestamp()
   })
+  operationsInBatch++
+
+  // Ejecutar el batch final si tiene operaciones
+  if (operationsInBatch > 0) {
+    await batch.commit()
+  }
+
+  console.log(`✅ Recálculo completado - Saldo final: ${saldoActual}`)
 }
 
 // ============================================================================

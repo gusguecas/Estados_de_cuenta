@@ -72,6 +72,28 @@
         },
         {
           "fieldPath": "fecha",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "movimientos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cuentaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "cancelado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fecha",
           "order": "DESCENDING"
         }
       ]

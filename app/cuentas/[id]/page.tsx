@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft, Sparkles } from 'lucide-react'
+import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft, Sparkles, Undo2 } from 'lucide-react'
 import { MovimientoModal } from '@/components/movimiento-modal'
 import { ImportarMovimientosModal } from '@/components/importar-movimientos-modal'
 import { ImportarEstadoCuentaIAModal } from '@/components/importar-estado-cuenta-ia-modal'
@@ -64,6 +64,9 @@ export default function CuentaDetailPage({ params }: PageProps) {
   const [montoDesde, setMontoDesde] = useState('')
   const [montoHasta, setMontoHasta] = useState('')
   const [estadoCuentaRefresh, setEstadoCuentaRefresh] = useState(0)
+  const [ultimoMovimientoId, setUltimoMovimientoId] = useState<string | null>(null)
+  const [ultimoMovimientoInfo, setUltimoMovimientoInfo] = useState<{ tipo: string; monto: number; descripcion: string } | null>(null)
+  const [pendingUndo, setPendingUndo] = useState(false)
 
   useEffect(() => {
     params.then((p) => setCuentaId(p.id))
@@ -75,11 +78,13 @@ export default function CuentaDetailPage({ params }: PageProps) {
     }
   }, [user, authLoading, router])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (detectNewMovimiento = false) => {
     if (!user || !cuentaId) return
 
     try {
       setLoading(true)
+      const movimientosAnteriores = movimientos.map(m => m.id)
+
       const [cuentaData, movimientosData, categoriasData, todasLasCuentas] = await Promise.all([
         getCuenta(cuentaId),
         getMovimientos(cuentaId),
@@ -90,12 +95,31 @@ export default function CuentaDetailPage({ params }: PageProps) {
       setMovimientos(movimientosData)
       setCategorias(categoriasData)
       setCuentas(todasLasCuentas)
+
+      // Detectar si hay un nuevo movimiento para poder deshacerlo
+      if (detectNewMovimiento && movimientosData.length > 0) {
+        // Buscar el movimiento más reciente (por createdAt)
+        const movimientoMasReciente = movimientosData.reduce((prev, current) => {
+          return (prev.createdAt > current.createdAt) ? prev : current
+        })
+
+        // Verificar si es realmente nuevo (no existía antes)
+        if (!movimientosAnteriores.includes(movimientoMasReciente.id)) {
+          setUltimoMovimientoId(movimientoMasReciente.id)
+          setUltimoMovimientoInfo({
+            tipo: movimientoMasReciente.tipo,
+            monto: movimientoMasReciente.monto,
+            descripcion: movimientoMasReciente.descripcion
+          })
+          setPendingUndo(true)
+        }
+      }
     } catch (error) {
       console.error('Error al cargar datos:', error)
     } finally {
       setLoading(false)
     }
-  }, [user, cuentaId])
+  }, [user, cuentaId, movimientos])
 
   useEffect(() => {
     if (user && cuentaId) {
@@ -139,6 +163,33 @@ export default function CuentaDetailPage({ params }: PageProps) {
     } catch (error) {
       console.error('Error al borrar movimientos:', error)
       alert('❌ Error al borrar algunos movimientos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUndo = async () => {
+    if (!ultimoMovimientoId || !ultimoMovimientoInfo) return
+
+    const tipoTexto = ultimoMovimientoInfo.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'
+    const montoTexto = new Intl.NumberFormat('es-MX', { style: 'currency', currency: cuenta?.moneda || 'MXN' }).format(ultimoMovimientoInfo.monto)
+
+    if (!confirm(`¿Deshacer el último movimiento?\n\n${tipoTexto}: ${montoTexto}\n${ultimoMovimientoInfo.descripcion}`)) return
+
+    try {
+      setLoading(true)
+      await deleteMovimiento(ultimoMovimientoId)
+      // Limpiar el estado de deshacer
+      setPendingUndo(false)
+      setUltimoMovimientoId(null)
+      setUltimoMovimientoInfo(null)
+      // Esperar un momento para que Firestore procese los cambios
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await loadData()
+      alert('✅ Movimiento deshecho correctamente')
+    } catch (error) {
+      console.error('Error al deshacer movimiento:', error)
+      alert('❌ Error al deshacer el movimiento')
     } finally {
       setLoading(false)
     }
@@ -245,6 +296,25 @@ export default function CuentaDetailPage({ params }: PageProps) {
 
   const movimientosFiltrados = filtrarMovimientos()
 
+  // Calcular totales de los movimientos filtrados
+  const totalIngresos = movimientosFiltrados
+    .filter(m => m.tipo === 'ingreso')
+    .reduce((sum, m) => sum + m.monto, 0)
+
+  const totalEgresos = movimientosFiltrados
+    .filter(m => m.tipo === 'egreso')
+    .reduce((sum, m) => sum + m.monto, 0)
+
+  const diferencia = totalIngresos - totalEgresos
+
+  // Verificar si hay algún filtro activo
+  const hayFiltrosActivos = searchTerm !== '' ||
+    filtroCategoria !== 'todas' ||
+    filtroTipo !== 'todos' ||
+    filtroFecha !== 'todos' ||
+    montoDesde !== '' ||
+    montoHasta !== ''
+
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
@@ -268,6 +338,49 @@ export default function CuentaDetailPage({ params }: PageProps) {
 
       <div className="relative z-10">
         <Header />
+
+        {/* Notificación flotante de deshacer */}
+        {pendingUndo && ultimoMovimientoInfo && (
+          <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
+            <div className="flex items-center gap-4 px-8 py-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-2 border-red-500/50 rounded-2xl shadow-2xl shadow-red-500/30 backdrop-blur-sm">
+              <div className={`p-3 rounded-xl ${ultimoMovimientoInfo.tipo === 'ingreso' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                {ultimoMovimientoInfo.tipo === 'ingreso' ? (
+                  <TrendingUp className="h-8 w-8 text-emerald-400" strokeWidth={2.5} />
+                ) : (
+                  <TrendingDown className="h-8 w-8 text-red-400" strokeWidth={2.5} />
+                )}
+              </div>
+              <div className="flex flex-col">
+                <p className="text-xl font-bold text-white">
+                  {ultimoMovimientoInfo.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}: {new Intl.NumberFormat('es-MX', { style: 'currency', currency: cuenta?.moneda || 'MXN' }).format(ultimoMovimientoInfo.monto)}
+                </p>
+                <p className="text-lg text-slate-300 truncate max-w-xs">
+                  {ultimoMovimientoInfo.descripcion}
+                </p>
+              </div>
+              <Button
+                onClick={handleUndo}
+                disabled={loading}
+                className="h-14 px-6 text-lg font-black bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-500/30"
+              >
+                <Undo2 className="mr-2 h-6 w-6" strokeWidth={2.5} />
+                Deshacer
+              </Button>
+              <Button
+                onClick={() => {
+                  setPendingUndo(false)
+                  setUltimoMovimientoId(null)
+                  setUltimoMovimientoInfo(null)
+                }}
+                variant="ghost"
+                className="h-14 px-4 text-slate-400 hover:text-white hover:bg-slate-700"
+              >
+                ✕
+              </Button>
+            </div>
+          </div>
+        )}
+
         <main className="px-8 py-10">
           <div className="space-y-8">
         <div className="flex items-center justify-between pl-32 mt-8">
@@ -501,6 +614,16 @@ export default function CuentaDetailPage({ params }: PageProps) {
                 <RefreshCw className="mr-3 h-8 w-8" strokeWidth={2.5} />
                 Recalcular Saldos
               </Button>
+              {pendingUndo && ultimoMovimientoInfo && (
+                <Button
+                  onClick={handleUndo}
+                  disabled={loading}
+                  className="h-16 px-8 text-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:via-rose-500 hover:to-red-600 text-white shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 transition-all border border-red-400/30 animate-pulse"
+                >
+                  <Undo2 className="mr-3 h-8 w-8" strokeWidth={2.5} />
+                  Deshacer Último
+                </Button>
+              )}
             </div>
           </div>
 
@@ -615,6 +738,59 @@ export default function CuentaDetailPage({ params }: PageProps) {
                   </Button>
                 )}
               </div>
+
+              {/* Resumen de totales filtrados */}
+              {movimientosFiltrados.length > 0 && (
+                <div className="grid grid-cols-4 gap-6 p-6 bg-gradient-to-r from-slate-900/80 via-blue-950/50 to-slate-900/80 border-2 border-cyan-500/30 rounded-2xl shadow-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-emerald-500/20">
+                      <TrendingUp className="h-8 w-8 text-emerald-400" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-emerald-300 uppercase">Total Abonos</p>
+                      <p className="text-3xl font-black text-emerald-400">
+                        {formatMoney(totalIngresos, cuenta.moneda)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-red-500/20">
+                      <TrendingDown className="h-8 w-8 text-red-400" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-red-300 uppercase">Total Cargos</p>
+                      <p className="text-3xl font-black text-red-400">
+                        {formatMoney(totalEgresos, cuenta.moneda)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-xl ${diferencia >= 0 ? 'bg-cyan-500/20' : 'bg-orange-500/20'}`}>
+                      <Wallet className={`h-8 w-8 ${diferencia >= 0 ? 'text-cyan-400' : 'text-orange-400'}`} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <p className={`text-lg font-bold uppercase ${diferencia >= 0 ? 'text-cyan-300' : 'text-orange-300'}`}>Diferencia</p>
+                      <p className={`text-3xl font-black ${diferencia >= 0 ? 'text-cyan-400' : 'text-orange-400'}`}>
+                        {formatMoney(diferencia, cuenta.moneda)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-purple-500/20">
+                      <FileText className="h-8 w-8 text-purple-400" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-purple-300 uppercase">Movimientos</p>
+                      <p className="text-3xl font-black text-purple-400">
+                        {movimientosFiltrados.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -746,11 +922,17 @@ export default function CuentaDetailPage({ params }: PageProps) {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex gap-3 justify-center">
-                          {movimiento.adjunto && (
+                          {(movimiento.adjunto || (movimiento.adjuntos && movimiento.adjuntos.length > 0)) && (
                             <Button
-                              onClick={() => window.open(movimiento.adjunto, '_blank')}
+                              onClick={() => {
+                                // Si hay adjuntos (array), abrir el primero. Si hay adjunto (string), abrirlo
+                                const url = movimiento.adjuntos && movimiento.adjuntos.length > 0
+                                  ? movimiento.adjuntos[0]
+                                  : movimiento.adjunto
+                                if (url) window.open(url, '_blank')
+                              }}
                               className="h-12 w-12 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/30"
-                              title="Ver comprobante"
+                              title={`Ver comprobante${movimiento.adjuntos && movimiento.adjuntos.length > 1 ? ` (${movimiento.adjuntos.length} archivos)` : ''}`}
                             >
                               <Paperclip className="h-6 w-6" strokeWidth={2.5} />
                             </Button>
@@ -791,14 +973,14 @@ export default function CuentaDetailPage({ params }: PageProps) {
         }}
         movimiento={selectedMovimiento}
         cuentaId={cuentaId}
-        onSuccess={loadData}
+        onSuccess={() => loadData(true)}
       />
 
       <ImportarMovimientosModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
         cuentaId={cuentaId}
-        onSuccess={loadData}
+        onSuccess={() => loadData(true)}
       />
 
       <EstadoCuentaModal
@@ -815,14 +997,14 @@ export default function CuentaDetailPage({ params }: PageProps) {
         open={showTransferenciaModal}
         onClose={() => setShowTransferenciaModal(false)}
         cuentaOrigenPreseleccionada={cuentaId}
-        onSuccess={loadData}
+        onSuccess={() => loadData(true)}
       />
 
       <ImportarEstadoCuentaIAModal
         open={showImportIAModal}
         onClose={() => setShowImportIAModal(false)}
         cuentaId={cuentaId}
-        onSuccess={loadData}
+        onSuccess={() => loadData(true)}
       />
     </div>
   )
