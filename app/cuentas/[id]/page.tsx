@@ -126,7 +126,8 @@ export default function CuentaDetailPage({ params }: PageProps) {
     if (user && cuentaId) {
       loadData()
     }
-  }, [user, cuentaId, loadData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, cuentaId])
 
   const handleDeleteMovimiento = async (id: string) => {
     if (!confirm('¿Estás seguro de cancelar este movimiento?')) return
