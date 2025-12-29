@@ -462,10 +462,11 @@ export async function recalcularSaldos(cuentaId: string): Promise<void> {
 
   for (const docSnap of snapshot.docs) {
     const movimiento = docSnap.data() as Movimiento
+    const comision = movimiento.comision || 0
     saldoActual = roundMoney(
       movimiento.tipo === 'ingreso'
-        ? saldoActual + movimiento.monto
-        : saldoActual - movimiento.monto
+        ? saldoActual + movimiento.monto - comision
+        : saldoActual - movimiento.monto - comision
     )
 
     // Solo actualizar si el saldo cambió
