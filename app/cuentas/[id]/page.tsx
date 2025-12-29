@@ -67,6 +67,7 @@ export default function CuentaDetailPage({ params }: PageProps) {
   const [ultimoMovimientoId, setUltimoMovimientoId] = useState<string | null>(null)
   const [ultimoMovimientoInfo, setUltimoMovimientoInfo] = useState<{ tipo: string; monto: number; descripcion: string } | null>(null)
   const [pendingUndo, setPendingUndo] = useState(false)
+  const [adjuntosMenuOpen, setAdjuntosMenuOpen] = useState<string | null>(null)
 
   useEffect(() => {
     params.then((p) => setCuentaId(p.id))
@@ -77,6 +78,20 @@ export default function CuentaDetailPage({ params }: PageProps) {
       router.push('/auth/login')
     }
   }, [user, authLoading, router])
+
+  // Cerrar menú de adjuntos cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (adjuntosMenuOpen) {
+        const target = event.target as HTMLElement
+        if (!target.closest('.adjuntos-menu-container')) {
+          setAdjuntosMenuOpen(null)
+        }
+      }
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [adjuntosMenuOpen])
 
   const loadData = useCallback(async (detectNewMovimiento = false, movimientosActuales: typeof movimientos = []) => {
     if (!user || !cuentaId) return
@@ -925,19 +940,48 @@ export default function CuentaDetailPage({ params }: PageProps) {
                       <TableCell className="text-center">
                         <div className="flex gap-3 justify-center">
                           {(movimiento.adjunto || (movimiento.adjuntos && movimiento.adjuntos.length > 0)) && (
-                            <Button
-                              onClick={() => {
-                                // Si hay adjuntos (array), abrir el primero. Si hay adjunto (string), abrirlo
-                                const url = movimiento.adjuntos && movimiento.adjuntos.length > 0
-                                  ? movimiento.adjuntos[0]
-                                  : movimiento.adjunto
-                                if (url) window.open(url, '_blank')
-                              }}
-                              className="h-12 w-12 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/30"
-                              title={`Ver comprobante${movimiento.adjuntos && movimiento.adjuntos.length > 1 ? ` (${movimiento.adjuntos.length} archivos)` : ''}`}
-                            >
-                              <Paperclip className="h-6 w-6" strokeWidth={2.5} />
-                            </Button>
+                            <div className="relative adjuntos-menu-container">
+                              <Button
+                                onClick={() => {
+                                  const adjuntos = movimiento.adjuntos && movimiento.adjuntos.length > 0
+                                    ? movimiento.adjuntos
+                                    : movimiento.adjunto ? [movimiento.adjunto] : []
+
+                                  // Si hay solo 1 archivo, abrirlo directamente
+                                  if (adjuntos.length === 1) {
+                                    window.open(adjuntos[0], '_blank')
+                                  } else {
+                                    // Si hay múltiples, mostrar el menú
+                                    setAdjuntosMenuOpen(adjuntosMenuOpen === movimiento.id ? null : movimiento.id)
+                                  }
+                                }}
+                                className="h-12 w-12 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/30"
+                                title={`Ver comprobante${movimiento.adjuntos && movimiento.adjuntos.length > 1 ? ` (${movimiento.adjuntos.length} archivos)` : ''}`}
+                              >
+                                <Paperclip className="h-6 w-6" strokeWidth={2.5} />
+                              </Button>
+                              {/* Menú de adjuntos múltiples */}
+                              {adjuntosMenuOpen === movimiento.id && movimiento.adjuntos && movimiento.adjuntos.length > 1 && (
+                                <div className="absolute right-0 top-14 z-50 min-w-[200px] bg-gray-800 border border-purple-500/50 rounded-xl shadow-2xl shadow-purple-500/20 overflow-hidden">
+                                  <div className="px-4 py-3 bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-b border-purple-500/30">
+                                    <p className="text-sm font-semibold text-purple-300">{movimiento.adjuntos.length} archivos adjuntos</p>
+                                  </div>
+                                  {movimiento.adjuntos.map((url, index) => (
+                                    <button
+                                      key={index}
+                                      onClick={() => {
+                                        window.open(url, '_blank')
+                                        setAdjuntosMenuOpen(null)
+                                      }}
+                                      className="w-full px-4 py-3 text-left hover:bg-purple-500/20 transition-colors flex items-center gap-3 border-b border-gray-700/50 last:border-0"
+                                    >
+                                      <Paperclip className="h-5 w-5 text-purple-400" />
+                                      <span className="text-white text-sm font-medium">Archivo {index + 1}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           )}
                           <Button
                             onClick={() => {
