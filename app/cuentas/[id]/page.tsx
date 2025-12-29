@@ -845,6 +845,7 @@ export default function CuentaDetailPage({ params }: PageProps) {
                     <TableHead className="text-2xl text-white font-bold text-center">Descripción</TableHead>
                     <TableHead className="text-2xl text-white font-bold text-center">Abono</TableHead>
                     <TableHead className="text-2xl text-white font-bold text-center">Cargo</TableHead>
+                    <TableHead className="text-2xl text-white font-bold text-center">Comisión</TableHead>
                     <TableHead className="text-2xl text-white font-bold text-center">Saldo</TableHead>
                     <TableHead className="text-2xl text-white font-bold text-center">Comentarios</TableHead>
                     <TableHead className="text-2xl text-white font-bold text-center">Notas</TableHead>
@@ -926,6 +927,15 @@ export default function CuentaDetailPage({ params }: PageProps) {
                             <TrendingDown className="h-7 w-7 text-red-400" strokeWidth={2.5} />
                             {formatMoney(movimiento.monto, cuenta.moneda)}
                           </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {movimiento.comision && movimiento.comision > 0 ? (
+                          <span className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+                            {formatMoney(movimiento.comision, cuenta.moneda)}
+                          </span>
+                        ) : (
+                          <span className="text-xl text-gray-500">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center text-2xl font-bold text-white">

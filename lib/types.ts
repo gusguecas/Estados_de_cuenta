@@ -71,6 +71,7 @@ export interface Movimiento {
   fecha: Date
   tipo: TipoMovimiento
   monto: number
+  comision?: number // Comisión bancaria (siempre se resta del saldo)
   descripcion: string
   categoriaId?: string
   referencia?: string // Número de cheque o referencia
@@ -136,6 +137,7 @@ export interface MovimientoFormData {
   fecha: string
   tipo: TipoMovimiento
   monto: number
+  comision?: number // Comisión bancaria
   descripcion: string
   categoriaId?: string
   referencia?: string
@@ -149,6 +151,7 @@ export interface MovimientoFormData {
 export interface TransferenciaFormData {
   fecha: string
   monto: number
+  comision?: number // Comisión bancaria (se resta de cuenta origen)
   cuentaOrigenId: string
   cuentaDestinoId: string
   descripcion: string

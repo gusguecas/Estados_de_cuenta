@@ -56,6 +56,7 @@ export function MovimientoModal({
     fecha: new Date().toISOString().split('T')[0],
     tipo: 'egreso',
     monto: 0,
+    comision: 0,
     descripcion: '',
     categoriaId: '',
     referencia: '',
@@ -163,6 +164,7 @@ export function MovimientoModal({
         fecha: fechaString,
         tipo: movimiento.tipo,
         monto: movimiento.monto,
+        comision: movimiento.comision || 0,
         descripcion: movimiento.descripcion,
         categoriaId: movimiento.categoriaId || '',
         referencia: movimiento.referencia || '',
@@ -180,6 +182,7 @@ export function MovimientoModal({
         fecha: new Date().toISOString().split('T')[0],
         tipo: 'egreso',
         monto: 0,
+        comision: 0,
         descripcion: '',
         categoriaId: '',
         referencia: '',
@@ -506,6 +509,31 @@ export function MovimientoModal({
                   className="pl-20 h-20 !text-3xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
                 />
               </div>
+            </div>
+
+            {/* Comisión */}
+            <div className="grid gap-4">
+              <Label htmlFor="comision" className="text-2xl font-black text-white flex items-center gap-3">
+                <DollarSign className="h-7 w-7 text-orange-400" />
+                Comisión bancaria (opcional)
+              </Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <DollarSign className="h-6 w-6 text-orange-400" />
+                </div>
+                <Input
+                  id="comision"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.comision === 0 ? '' : formData.comision}
+                  onChange={(e) => handleChange('comision', parseFloat(e.target.value) || 0)}
+                  disabled={loading}
+                  className="pl-16 h-16 !text-2xl font-bold bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:ring-orange-500/20"
+                />
+              </div>
+              <p className="text-sm text-gray-400">La comisión se restará del saldo automáticamente</p>
             </div>
 
             {/* Categoría */}

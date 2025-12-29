@@ -207,11 +207,12 @@ export async function createMovimiento(
   // Función para redondear a 2 decimales y evitar errores de precisión
   const roundMoney = (value: number) => Math.round(value * 100) / 100
 
-  // Calcular el nuevo saldo
+  // Calcular el nuevo saldo (la comisión siempre se resta)
+  const comision = data.comision || 0
   const nuevoSaldo = roundMoney(
     data.tipo === 'ingreso'
-      ? cuenta.saldoActual + data.monto
-      : cuenta.saldoActual - data.monto
+      ? cuenta.saldoActual + data.monto - comision
+      : cuenta.saldoActual - data.monto - comision
   )
 
   // Crear el movimiento con fecha en UTC para evitar problemas de zona horaria
@@ -506,7 +507,7 @@ export async function createTransferencia(
   userId: string,
   data: TransferenciaFormData
 ): Promise<{ origenId: string; destinoId: string }> {
-  const { cuentaOrigenId, cuentaDestinoId, monto, fecha, descripcion, categoriaId, referencia, beneficiario, notas, adjuntos } = data
+  const { cuentaOrigenId, cuentaDestinoId, monto, comision, fecha, descripcion, categoriaId, referencia, beneficiario, notas, adjuntos } = data
 
   // Verificar que las cuentas existan y obtener sus datos
   const [cuentaOrigen, cuentaDestino] = await Promise.all([
@@ -525,8 +526,9 @@ export async function createTransferencia(
   // Función para redondear a 2 decimales y evitar errores de precisión
   const roundMoney = (value: number) => Math.round(value * 100) / 100
 
-  // Calcular nuevos saldos
-  const nuevoSaldoOrigen = roundMoney(cuentaOrigen.saldoActual - monto)
+  // Calcular nuevos saldos (la comisión se resta de la cuenta origen)
+  const comisionMonto = comision || 0
+  const nuevoSaldoOrigen = roundMoney(cuentaOrigen.saldoActual - monto - comisionMonto)
   const nuevoSaldoDestino = roundMoney(cuentaDestino.saldoActual + monto)
 
   // Usar UTC para evitar problemas de zona horaria
@@ -541,6 +543,7 @@ export async function createTransferencia(
     fecha: fechaMovimiento,
     tipo: 'egreso' as TipoMovimiento,
     monto,
+    comision: comisionMonto > 0 ? comisionMonto : null,
     descripcion: `Transferencia a ${cuentaDestino.nombre} - ${descripcion}`,
     categoriaId: categoriaId || null,
     referencia,
