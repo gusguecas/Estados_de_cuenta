@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft, Sparkles, Undo2 } from 'lucide-react'
+import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Upload, Search, FileText, Wallet, ArrowLeftRight, Paperclip, Calendar, RefreshCw, ArrowLeft, Sparkles, Undo2, FileDown } from 'lucide-react'
 import { MovimientoModal } from '@/components/movimiento-modal'
 import { ImportarMovimientosModal } from '@/components/importar-movimientos-modal'
 import { ImportarEstadoCuentaIAModal } from '@/components/importar-estado-cuenta-ia-modal'
@@ -28,6 +28,8 @@ import { EstadosCuentaCalendar } from '@/components/estados-cuenta-calendar'
 import { Input } from '@/components/ui/input'
 import { Header } from '@/components/header'
 import Image from 'next/image'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   Select,
   SelectContent,
@@ -332,6 +334,209 @@ export default function CuentaDetailPage({ params }: PageProps) {
     montoDesde !== '' ||
     montoHasta !== ''
 
+  // Función para generar reporte PDF
+  const generarReportePDF = () => {
+    if (!cuenta) return
+
+    const doc = new jsPDF('landscape', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+
+    // Colores
+    const darkColor: [number, number, number] = [15, 23, 42] // slate-900
+
+    // Header con gradiente
+    doc.setFillColor(...darkColor)
+    doc.rect(0, 0, pageWidth, 45, 'F')
+
+    // Línea decorativa cyan
+    doc.setFillColor(6, 182, 212)
+    doc.rect(0, 45, pageWidth, 2, 'F')
+
+    // Título de la cuenta
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(24)
+    doc.setFont('helvetica', 'bold')
+    doc.text(cuenta.nombre, 15, 20)
+
+    // Subtítulo con info del banco
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(6, 182, 212)
+    doc.text(`${cuenta.banco} • ${cuenta.numeroCuenta}`, 15, 30)
+
+    // Fecha de generación
+    doc.setTextColor(148, 163, 184)
+    doc.setFontSize(10)
+    const fechaGeneracion = new Intl.DateTimeFormat('es-MX', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date())
+    doc.text(`Generado: ${fechaGeneracion}`, pageWidth - 15, 20, { align: 'right' })
+
+    // Filtros aplicados (si hay)
+    if (hayFiltrosActivos) {
+      doc.setTextColor(251, 191, 36)
+      doc.setFontSize(9)
+      const filtrosTexto: string[] = []
+      if (searchTerm) filtrosTexto.push(`Búsqueda: "${searchTerm}"`)
+      if (filtroTipo !== 'todos') filtrosTexto.push(`Tipo: ${filtroTipo === 'ingreso' ? 'Ingresos' : 'Egresos'}`)
+      if (filtroCategoria !== 'todas') {
+        const catNombre = filtroCategoria === 'sin-categoria' ? 'Sin categoría' : categorias.find(c => c.id === filtroCategoria)?.nombre || filtroCategoria
+        filtrosTexto.push(`Categoría: ${catNombre}`)
+      }
+      if (filtroFecha !== 'todos') {
+        if (filtroFecha === 'este-mes') filtrosTexto.push('Fecha: Este mes')
+        else if (filtroFecha === 'esta-semana') filtrosTexto.push('Fecha: Esta semana')
+        else if (filtroFecha === 'rango-personalizado') {
+          if (fechaDesde || fechaHasta) filtrosTexto.push(`Fecha: ${fechaDesde || '...'} a ${fechaHasta || '...'}`)
+        }
+      }
+      if (montoDesde || montoHasta) filtrosTexto.push(`Monto: $${montoDesde || '0'} - $${montoHasta || '∞'}`)
+      doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, pageWidth - 15, 30, { align: 'right' })
+    }
+
+    // KPIs Cards
+    const kpiY = 55
+    const kpiWidth = (pageWidth - 60) / 4
+    const kpiHeight = 25
+    const kpiGap = 10
+
+    // KPI 1: Total Movimientos
+    doc.setFillColor(88, 28, 135) // purple-900
+    doc.roundedRect(15, kpiY, kpiWidth, kpiHeight, 3, 3, 'F')
+    doc.setTextColor(216, 180, 254) // purple-300
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('MOVIMIENTOS', 15 + kpiWidth/2, kpiY + 8, { align: 'center' })
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(16)
+    doc.text(movimientosFiltrados.length.toString(), 15 + kpiWidth/2, kpiY + 19, { align: 'center' })
+
+    // KPI 2: Total Ingresos
+    const kpi2X = 15 + kpiWidth + kpiGap
+    doc.setFillColor(6, 78, 59) // emerald-950
+    doc.roundedRect(kpi2X, kpiY, kpiWidth, kpiHeight, 3, 3, 'F')
+    doc.setTextColor(110, 231, 183) // emerald-300
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('TOTAL INGRESOS', kpi2X + kpiWidth/2, kpiY + 8, { align: 'center' })
+    doc.setTextColor(52, 211, 153) // emerald-400
+    doc.setFontSize(14)
+    doc.text(formatMoney(totalIngresos, cuenta.moneda), kpi2X + kpiWidth/2, kpiY + 19, { align: 'center' })
+
+    // KPI 3: Total Egresos
+    const kpi3X = kpi2X + kpiWidth + kpiGap
+    doc.setFillColor(127, 29, 29) // red-900
+    doc.roundedRect(kpi3X, kpiY, kpiWidth, kpiHeight, 3, 3, 'F')
+    doc.setTextColor(252, 165, 165) // red-300
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('TOTAL EGRESOS', kpi3X + kpiWidth/2, kpiY + 8, { align: 'center' })
+    doc.setTextColor(248, 113, 113) // red-400
+    doc.setFontSize(14)
+    doc.text(formatMoney(totalEgresos, cuenta.moneda), kpi3X + kpiWidth/2, kpiY + 19, { align: 'center' })
+
+    // KPI 4: Saldo/Diferencia
+    const kpi4X = kpi3X + kpiWidth + kpiGap
+    const diffColor = diferencia >= 0 ? [6, 78, 59] : [127, 29, 29]
+    doc.setFillColor(diffColor[0], diffColor[1], diffColor[2])
+    doc.roundedRect(kpi4X, kpiY, kpiWidth, kpiHeight, 3, 3, 'F')
+    doc.setTextColor(diferencia >= 0 ? 110 : 252, diferencia >= 0 ? 231 : 165, diferencia >= 0 ? 183 : 165)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('DIFERENCIA', kpi4X + kpiWidth/2, kpiY + 8, { align: 'center' })
+    doc.setTextColor(diferencia >= 0 ? 52 : 248, diferencia >= 0 ? 211 : 113, diferencia >= 0 ? 153 : 113)
+    doc.setFontSize(14)
+    doc.text(formatMoney(diferencia, cuenta.moneda), kpi4X + kpiWidth/2, kpiY + 19, { align: 'center' })
+
+    // Saldo actual de la cuenta
+    doc.setFillColor(8, 47, 73) // cyan-950
+    doc.roundedRect(15, kpiY + kpiHeight + 5, pageWidth - 30, 12, 2, 2, 'F')
+    doc.setTextColor(103, 232, 249) // cyan-300
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`SALDO ACTUAL DE LA CUENTA: ${formatMoney(cuenta.saldoActual, cuenta.moneda)}`, pageWidth/2, kpiY + kpiHeight + 13, { align: 'center' })
+
+    // Tabla de movimientos
+    const tableData = movimientosFiltrados.map(mov => [
+      formatDate(mov.fecha),
+      mov.referencia || '-',
+      getCategoriaNombre(mov.categoriaId),
+      mov.descripcion + (mov.beneficiario ? `\n${mov.beneficiario}` : ''),
+      mov.tipo === 'ingreso' ? formatMoney(mov.monto, cuenta.moneda) : '',
+      mov.tipo === 'egreso' ? formatMoney(mov.monto, cuenta.moneda) : '',
+      mov.comision && mov.comision > 0 ? formatMoney(mov.comision, cuenta.moneda) : '-',
+      formatMoney(mov.saldoDespues, cuenta.moneda),
+      mov.comentarios || '-'
+    ])
+
+    autoTable(doc, {
+      startY: kpiY + kpiHeight + 22,
+      head: [['Fecha', 'No. Cheque', 'Categoría', 'Descripción', 'Abono', 'Cargo', 'Comisión', 'Saldo', 'Comentarios']],
+      body: tableData,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        textColor: [255, 255, 255],
+        fillColor: [30, 41, 59], // slate-800
+        lineColor: [51, 65, 85], // slate-600
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        fillColor: [15, 23, 42], // slate-900
+        textColor: [6, 182, 212], // cyan-500
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'center',
+      },
+      alternateRowStyles: {
+        fillColor: [51, 65, 85], // slate-700
+      },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 22 }, // Fecha
+        1: { halign: 'center', cellWidth: 20 }, // No. Cheque
+        2: { halign: 'center', cellWidth: 28 }, // Categoría
+        3: { cellWidth: 55 }, // Descripción
+        4: { halign: 'right', cellWidth: 25, textColor: [52, 211, 153] }, // Abono (verde)
+        5: { halign: 'right', cellWidth: 25, textColor: [248, 113, 113] }, // Cargo (rojo)
+        6: { halign: 'right', cellWidth: 20 }, // Comisión
+        7: { halign: 'right', cellWidth: 25 }, // Saldo
+        8: { cellWidth: 40 }, // Comentarios
+      },
+      didDrawPage: (data) => {
+        // Footer en cada página
+        const pageCount = doc.getNumberOfPages()
+        doc.setFontSize(8)
+        doc.setTextColor(148, 163, 184)
+        doc.text(
+          `Página ${data.pageNumber} de ${pageCount}`,
+          pageWidth / 2,
+          pageHeight - 10,
+          { align: 'center' }
+        )
+        doc.text(
+          'Estados de Cuenta - Reporte generado automáticamente',
+          15,
+          pageHeight - 10
+        )
+      },
+    })
+
+    // Nombre del archivo
+    const fechaArchivo = new Intl.DateTimeFormat('es-MX', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date()).replace(/\//g, '-')
+
+    doc.save(`Reporte_${cuenta.nombre.replace(/\s+/g, '_')}_${fechaArchivo}.pdf`)
+  }
+
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
@@ -630,6 +835,14 @@ export default function CuentaDetailPage({ params }: PageProps) {
               >
                 <RefreshCw className="mr-3 h-8 w-8" strokeWidth={2.5} />
                 Recalcular Saldos
+              </Button>
+              <Button
+                onClick={generarReportePDF}
+                disabled={movimientosFiltrados.length === 0}
+                className="h-16 px-8 text-xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-500 hover:via-red-500 hover:to-rose-600 text-white shadow-2xl shadow-rose-500/30 hover:shadow-rose-500/50 transition-all border border-rose-400/30"
+              >
+                <FileDown className="mr-3 h-8 w-8" strokeWidth={2.5} />
+                Generar Reporte PDF
               </Button>
               {pendingUndo && ultimoMovimientoInfo && (
                 <Button
