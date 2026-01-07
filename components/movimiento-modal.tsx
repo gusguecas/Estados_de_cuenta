@@ -764,7 +764,7 @@ export function MovimientoModal({
                   <div className="grid gap-4">
                     <Label htmlFor="beneficiario" className="text-2xl font-black text-white flex items-center gap-3">
                       <User className="h-7 w-7 text-pink-400" />
-                      Beneficiario
+                      {formData.tipo === 'ingreso' ? 'Recibido de' : 'Pagado a'}
                     </Label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
@@ -772,7 +772,7 @@ export function MovimientoModal({
                       </div>
                       <Input
                         id="beneficiario"
-                        placeholder="Nombre del beneficiario"
+                        placeholder={formData.tipo === 'ingreso' ? 'Nombre de quien recibiste el pago' : 'Nombre de a quién pagaste'}
                         value={formData.beneficiario}
                         onChange={(e) => handleChange('beneficiario', e.target.value)}
                         disabled={loading}
