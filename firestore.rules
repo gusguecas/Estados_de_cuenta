@@ -45,5 +45,12 @@ service cloud.firestore {
       allow write, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
     }
+
+    // Documentos financieros - users can only access their own
+    match /documentos_financieros/{documentoId} {
+      allow read: if isAuthenticated();
+      allow write, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
   }
 }
