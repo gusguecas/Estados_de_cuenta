@@ -5,13 +5,14 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { getCuentas, deleteCuenta } from '@/lib/firestore'
-import type { CuentaBancaria } from '@/lib/types'
+import { getCuentas, deleteCuenta, getDocumentosFinancieros, deleteDocumentoFinanciero } from '@/lib/firestore'
+import type { CuentaBancaria, DocumentoFinanciero } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Edit, Trash2, CreditCard, Wallet, DollarSign, User, Calendar } from 'lucide-react'
+import { Plus, Edit, Trash2, CreditCard, Wallet, DollarSign, User, Calendar, FileText, Download, Eye } from 'lucide-react'
 import { CuentaModal } from '@/components/cuenta-modal'
+import { DocumentoFinancieroModal } from '@/components/documento-financiero-modal'
 import { MainLayout } from '@/components/main-layout'
 import Image from 'next/image'
 
@@ -22,6 +23,8 @@ export default function PersonalPage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaBancaria | null>(null)
+  const [documentos, setDocumentos] = useState<DocumentoFinanciero[]>([])
+  const [showDocumentoModal, setShowDocumentoModal] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -43,11 +46,23 @@ export default function PersonalPage() {
     }
   }, [user])
 
+  const loadDocumentos = useCallback(async () => {
+    if (!user) return
+
+    try {
+      const data = await getDocumentosFinancieros(user.uid)
+      setDocumentos(data)
+    } catch (error) {
+      console.error('Error al cargar documentos:', error)
+    }
+  }, [user])
+
   useEffect(() => {
     if (user) {
       loadCuentas()
+      loadDocumentos()
     }
-  }, [user, loadCuentas])
+  }, [user, loadCuentas, loadDocumentos])
 
   const handleDeleteCuenta = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar esta cuenta?')) return
@@ -58,6 +73,45 @@ export default function PersonalPage() {
     } catch (error) {
       console.error('Error al eliminar cuenta:', error)
     }
+  }
+
+  const handleDeleteDocumento = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este documento?')) return
+
+    try {
+      await deleteDocumentoFinanciero(id)
+      await loadDocumentos()
+    } catch (error) {
+      console.error('Error al eliminar documento:', error)
+    }
+  }
+
+  const getTipoDocumentoLabel = (tipo: string) => {
+    const tipos: Record<string, string> = {
+      buro_credito: 'Buró de Crédito',
+      declaracion_anual: 'Declaración Anual',
+      declaracion_mensual: 'Declaración Mensual',
+      constancia_fiscal: 'Constancia Fiscal',
+      otro: 'Otro'
+    }
+    return tipos[tipo] || tipo
+  }
+
+  const getTipoDocumentoBadge = (tipo: string) => {
+    const variants: Record<string, string> = {
+      buro_credito: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+      declaracion_anual: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+      declaracion_mensual: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50',
+      constancia_fiscal: 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+      otro: 'bg-slate-500/20 text-slate-300 border-slate-500/50'
+    }
+    return variants[tipo] || variants.otro
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB'
   }
 
   const formatMoney = (amount: number, moneda: string) => {
@@ -445,6 +499,131 @@ export default function PersonalPage() {
             )}
           </div>
         )}
+
+        {/* Documentos Financieros */}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-4xl font-black text-white flex items-center gap-3">
+              <FileText className="h-10 w-10 text-amber-400" strokeWidth={2.5} />
+              Documentos Financieros
+            </h2>
+            <Button
+              onClick={() => setShowDocumentoModal(true)}
+              className="h-16 px-8 text-xl font-black bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-700 hover:via-orange-700 hover:to-red-700 text-white shadow-2xl shadow-amber-500/30 hover:shadow-amber-500/50 transition-all"
+            >
+              <Plus className="mr-3 h-7 w-7" strokeWidth={2.5} />
+              Subir Documento
+            </Button>
+          </div>
+
+          {documentos.length === 0 ? (
+            <Card className="relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-amber-500/30 shadow-2xl backdrop-blur-sm">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-amber-500 to-orange-500 opacity-5 rounded-full -mr-32 -mt-32"></div>
+              <CardContent className="flex flex-col items-center justify-center py-20">
+                <div className="p-8 rounded-3xl bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 mb-8 shadow-2xl shadow-amber-500/30">
+                  <FileText className="h-20 w-20 text-white" strokeWidth={2.5} />
+                </div>
+                <h3 className="text-4xl font-black text-white mb-4">
+                  No hay documentos financieros
+                </h3>
+                <p className="text-xl text-amber-300 mb-10 font-semibold">
+                  Sube tu buró de crédito, declaraciones fiscales y más
+                </p>
+                <Button
+                  onClick={() => setShowDocumentoModal(true)}
+                  className="h-16 px-10 text-xl font-black bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-700 hover:via-orange-700 hover:to-red-700 text-white shadow-2xl shadow-amber-500/30"
+                >
+                  <Plus className="mr-3 h-7 w-7" strokeWidth={2.5} />
+                  Subir Primer Documento
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {documentos.map((documento) => (
+                <Card
+                  key={documento.id}
+                  className="group relative overflow-hidden bg-gradient-to-br from-slate-950/50 to-blue-950/50 border-amber-500/30 shadow-2xl hover:shadow-amber-500/20 transition-all duration-300 hover:-translate-y-2 hover:border-amber-500/50 backdrop-blur-sm"
+                >
+                  <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-amber-500 to-orange-500 opacity-10 rounded-full -mr-20 -mt-20"></div>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 shadow-lg shadow-amber-500/30">
+                        <FileText className="h-8 w-8 text-white" strokeWidth={2.5} />
+                      </div>
+                      <Badge className={`${getTipoDocumentoBadge(documento.tipoDocumento)} text-sm font-bold px-3 py-1`}>
+                        {getTipoDocumentoLabel(documento.tipoDocumento)}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-2xl font-black text-white mt-4">
+                      {documento.nombre}
+                    </CardTitle>
+                    {documento.descripcion && (
+                      <CardDescription className="text-base text-amber-300 font-semibold">
+                        {documento.descripcion}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        {documento.año && (
+                          <span className="px-3 py-1 bg-slate-800/50 rounded-lg text-slate-300 font-semibold">
+                            Año: {documento.año}
+                          </span>
+                        )}
+                        {documento.mes && (
+                          <span className="px-3 py-1 bg-slate-800/50 rounded-lg text-slate-300 font-semibold">
+                            Mes: {documento.mes}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-slate-400">
+                        <p className="font-semibold truncate" title={documento.nombreArchivo}>
+                          {documento.nombreArchivo}
+                        </p>
+                        <p>{formatFileSize(documento.tamanioArchivo)}</p>
+                      </div>
+                      <div className="flex gap-2 pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-12 text-base font-bold bg-amber-500/10 border-2 border-amber-500/50 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400 hover:text-white"
+                          onClick={() => window.open(documento.archivoUrl, '_blank')}
+                        >
+                          <Eye className="h-5 w-5 mr-2" strokeWidth={2.5} />
+                          Ver
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-12 text-base font-bold bg-emerald-500/10 border-2 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 hover:text-white"
+                          onClick={() => {
+                            const link = document.createElement('a')
+                            link.href = documento.archivoUrl
+                            link.download = documento.nombreArchivo
+                            link.click()
+                          }}
+                        >
+                          <Download className="h-5 w-5 mr-2" strokeWidth={2.5} />
+                          Descargar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-12 px-4 text-base font-bold bg-red-500/10 border-2 border-red-500/50 text-red-300 hover:bg-red-500/20 hover:border-red-400 hover:text-white"
+                          onClick={() => handleDeleteDocumento(documento.id)}
+                        >
+                          <Trash2 className="h-5 w-5" strokeWidth={2.5} />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <CuentaModal
@@ -456,6 +635,12 @@ export default function PersonalPage() {
         cuenta={selectedCuenta}
         empresaId="personal"
         onSuccess={loadCuentas}
+      />
+
+      <DocumentoFinancieroModal
+        open={showDocumentoModal}
+        onClose={() => setShowDocumentoModal(false)}
+        onSuccess={loadDocumentos}
       />
     </MainLayout>
   )

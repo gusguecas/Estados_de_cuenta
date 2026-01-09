@@ -25,7 +25,9 @@ import type {
   TransferenciaFormData,
   Categoria,
   TipoMovimiento,
-  EstadoCuenta
+  EstadoCuenta,
+  DocumentoFinanciero,
+  DocumentoFinancieroFormData
 } from './types'
 
 // ============================================================================
@@ -739,4 +741,61 @@ export async function uploadCuentaLogo(file: File, cuentaId: string): Promise<st
   const downloadURL = await getDownloadURL(storageRef)
 
   return downloadURL
+}
+
+// ============================================================================
+// DOCUMENTOS FINANCIEROS
+// ============================================================================
+
+export async function uploadDocumentoFinancieroPDF(
+  file: File,
+  userId: string
+): Promise<string> {
+  const timestamp = Date.now()
+  const fileName = `documentos-financieros/${userId}/${timestamp}_${file.name}`
+  const storageRef = ref(storage, fileName)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
+}
+
+export async function createDocumentoFinanciero(
+  userId: string,
+  data: DocumentoFinancieroFormData,
+  archivoUrl: string,
+  nombreArchivo: string,
+  tamanioArchivo: number
+): Promise<string> {
+  const docRef = await addDoc(collection(db, 'documentos_financieros'), {
+    ...data,
+    userId,
+    archivoUrl,
+    nombreArchivo,
+    tamanioArchivo,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+  return docRef.id
+}
+
+export async function getDocumentosFinancieros(userId: string): Promise<DocumentoFinanciero[]> {
+  const q = query(
+    collection(db, 'documentos_financieros'),
+    where('userId', '==', userId),
+    orderBy('createdAt', 'desc')
+  )
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as DocumentoFinanciero[]
+}
+
+export async function deleteDocumentoFinanciero(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'documentos_financieros', id))
 }

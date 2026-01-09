@@ -100,6 +100,31 @@ export interface EstadoCuenta {
   uploadedAt: Date
 }
 
+export type TipoDocumentoFinanciero = 'buro_credito' | 'declaracion_anual' | 'declaracion_mensual' | 'constancia_fiscal' | 'otro'
+
+export interface DocumentoFinanciero {
+  id: string
+  userId: string
+  nombre: string
+  tipoDocumento: TipoDocumentoFinanciero
+  descripcion?: string
+  año?: number
+  mes?: number
+  archivoUrl: string
+  nombreArchivo: string
+  tamanioArchivo: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DocumentoFinancieroFormData {
+  nombre: string
+  tipoDocumento: TipoDocumentoFinanciero
+  descripcion?: string
+  año?: number
+  mes?: number
+}
+
 // Tipos para formularios
 export interface EmpresaFormData {
   nombre: string
