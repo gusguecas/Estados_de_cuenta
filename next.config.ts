@@ -10,7 +10,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Forzar renderizado dinámico para todas las páginas
   output: 'standalone',
 };
 

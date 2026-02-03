@@ -52,5 +52,19 @@ service cloud.firestore {
       allow write, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
     }
+
+    // Personas (familiares) - users can only access their own
+    match /personas/{personaId} {
+      allow read: if isAuthenticated();
+      allow write, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Documentos personales - users can only access their own
+    match /documentos_personales/{documentoId} {
+      allow read: if isAuthenticated();
+      allow write, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
   }
 }

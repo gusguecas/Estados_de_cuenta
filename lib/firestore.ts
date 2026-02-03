@@ -27,7 +27,11 @@ import type {
   TipoMovimiento,
   EstadoCuenta,
   DocumentoFinanciero,
-  DocumentoFinancieroFormData
+  DocumentoFinancieroFormData,
+  Persona,
+  PersonaFormData,
+  DocumentoPersonal,
+  DocumentoPersonalFormData
 } from './types'
 
 // ============================================================================
@@ -798,4 +802,283 @@ export async function getDocumentosFinancieros(userId: string): Promise<Document
 
 export async function deleteDocumentoFinanciero(id: string): Promise<void> {
   await deleteDoc(doc(db, 'documentos_financieros', id))
+}
+
+// ============================================================================
+// PERSONAS (FAMILIARES)
+// ============================================================================
+
+export async function createPersona(userId: string, data: PersonaFormData): Promise<string> {
+  const personaData: Record<string, unknown> = {
+    userId,
+    nombre: data.nombre,
+    apellidos: data.apellidos,
+    parentesco: data.parentesco,
+    activo: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }
+
+  // Solo agregar campos opcionales si tienen valor
+  if (data.fechaNacimiento) {
+    const [year, month, day] = data.fechaNacimiento.split('-').map(Number)
+    personaData.fechaNacimiento = new Date(Date.UTC(year, month - 1, day))
+  }
+  if (data.email) personaData.email = data.email
+  if (data.telefono) personaData.telefono = data.telefono
+  if (data.notas) personaData.notas = data.notas
+
+  const personaRef = await addDoc(collection(db, 'personas'), personaData)
+  return personaRef.id
+}
+
+export async function getPersonas(userId: string): Promise<Persona[]> {
+  const q = query(
+    collection(db, 'personas'),
+    where('userId', '==', userId),
+    where('activo', '==', true),
+    orderBy('nombre')
+  )
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fechaNacimiento: doc.data().fechaNacimiento ? (doc.data().fechaNacimiento as Timestamp).toDate() : undefined,
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as Persona[]
+}
+
+export async function getPersona(id: string): Promise<Persona | null> {
+  const docRef = doc(db, 'personas', id)
+  const docSnap = await getDoc(docRef)
+
+  if (!docSnap.exists()) {
+    return null
+  }
+
+  return {
+    id: docSnap.id,
+    ...docSnap.data(),
+    fechaNacimiento: docSnap.data().fechaNacimiento ? (docSnap.data().fechaNacimiento as Timestamp).toDate() : undefined,
+    createdAt: (docSnap.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (docSnap.data().updatedAt as Timestamp)?.toDate() || new Date()
+  } as Persona
+}
+
+export async function updatePersona(id: string, data: Partial<PersonaFormData>): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    updatedAt: serverTimestamp()
+  }
+
+  // Solo agregar campos si tienen valor
+  if (data.nombre) updateData.nombre = data.nombre
+  if (data.apellidos) updateData.apellidos = data.apellidos
+  if (data.parentesco) updateData.parentesco = data.parentesco
+  if (data.email) updateData.email = data.email
+  if (data.telefono) updateData.telefono = data.telefono
+  if (data.notas) updateData.notas = data.notas
+
+  // Convertir fecha de nacimiento si existe
+  if (data.fechaNacimiento) {
+    const [year, month, day] = data.fechaNacimiento.split('-').map(Number)
+    updateData.fechaNacimiento = new Date(Date.UTC(year, month - 1, day))
+  }
+
+  const docRef = doc(db, 'personas', id)
+  await updateDoc(docRef, updateData)
+}
+
+export async function deletePersona(id: string): Promise<void> {
+  const docRef = doc(db, 'personas', id)
+  await updateDoc(docRef, {
+    activo: false,
+    updatedAt: serverTimestamp()
+  })
+}
+
+// ============================================================================
+// DOCUMENTOS PERSONALES (IDENTIDAD)
+// ============================================================================
+
+export async function uploadDocumentoPersonalArchivo(
+  file: File,
+  userId: string,
+  personaId: string
+): Promise<string> {
+  const timestamp = Date.now()
+  const fileName = `documentos-personales/${userId}/${personaId}/${timestamp}_${file.name}`
+  const storageRef = ref(storage, fileName)
+
+  await uploadBytes(storageRef, file)
+  const downloadURL = await getDownloadURL(storageRef)
+
+  return downloadURL
+}
+
+export async function createDocumentoPersonal(
+  userId: string,
+  data: DocumentoPersonalFormData,
+  archivoUrl?: string,
+  nombreArchivo?: string,
+  tamanioArchivo?: number
+): Promise<string> {
+  const docData: Record<string, unknown> = {
+    userId,
+    personaId: data.personaId,
+    tipoDocumento: data.tipoDocumento,
+    nombre: data.nombre,
+    activo: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }
+
+  // Solo agregar campos opcionales si tienen valor
+  if (data.numeroDocumento) docData.numeroDocumento = data.numeroDocumento
+  if (data.lugarExpedicion) docData.lugarExpedicion = data.lugarExpedicion
+  if (data.entidadEmisora) docData.entidadEmisora = data.entidadEmisora
+  if (data.notas) docData.notas = data.notas
+  if (archivoUrl) docData.archivoUrl = archivoUrl
+  if (nombreArchivo) docData.nombreArchivo = nombreArchivo
+  if (tamanioArchivo) docData.tamanioArchivo = tamanioArchivo
+
+  // Convertir fechas si existen
+  if (data.fechaExpedicion) {
+    const [year, month, day] = data.fechaExpedicion.split('-').map(Number)
+    docData.fechaExpedicion = new Date(Date.UTC(year, month - 1, day))
+  }
+
+  if (data.fechaVencimiento) {
+    const [year, month, day] = data.fechaVencimiento.split('-').map(Number)
+    docData.fechaVencimiento = new Date(Date.UTC(year, month - 1, day))
+  }
+
+  const docRef = await addDoc(collection(db, 'documentos_personales'), docData)
+  return docRef.id
+}
+
+export async function getDocumentosPersonales(userId: string, personaId?: string): Promise<DocumentoPersonal[]> {
+  let q
+
+  if (personaId) {
+    q = query(
+      collection(db, 'documentos_personales'),
+      where('userId', '==', userId),
+      where('personaId', '==', personaId),
+      where('activo', '==', true),
+      orderBy('createdAt', 'desc')
+    )
+  } else {
+    q = query(
+      collection(db, 'documentos_personales'),
+      where('userId', '==', userId),
+      where('activo', '==', true),
+      orderBy('createdAt', 'desc')
+    )
+  }
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fechaExpedicion: doc.data().fechaExpedicion ? (doc.data().fechaExpedicion as Timestamp).toDate() : undefined,
+    fechaVencimiento: doc.data().fechaVencimiento ? (doc.data().fechaVencimiento as Timestamp).toDate() : undefined,
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as DocumentoPersonal[]
+}
+
+export async function getDocumentoPersonal(id: string): Promise<DocumentoPersonal | null> {
+  const docRef = doc(db, 'documentos_personales', id)
+  const docSnap = await getDoc(docRef)
+
+  if (!docSnap.exists()) {
+    return null
+  }
+
+  return {
+    id: docSnap.id,
+    ...docSnap.data(),
+    fechaExpedicion: docSnap.data().fechaExpedicion ? (docSnap.data().fechaExpedicion as Timestamp).toDate() : undefined,
+    fechaVencimiento: docSnap.data().fechaVencimiento ? (docSnap.data().fechaVencimiento as Timestamp).toDate() : undefined,
+    createdAt: (docSnap.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (docSnap.data().updatedAt as Timestamp)?.toDate() || new Date()
+  } as DocumentoPersonal
+}
+
+export async function updateDocumentoPersonal(
+  id: string,
+  data: Partial<DocumentoPersonalFormData>,
+  archivoUrl?: string,
+  nombreArchivo?: string,
+  tamanioArchivo?: number
+): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    updatedAt: serverTimestamp()
+  }
+
+  // Solo agregar campos si tienen valor
+  if (data.personaId) updateData.personaId = data.personaId
+  if (data.tipoDocumento) updateData.tipoDocumento = data.tipoDocumento
+  if (data.nombre) updateData.nombre = data.nombre
+  if (data.numeroDocumento) updateData.numeroDocumento = data.numeroDocumento
+  if (data.lugarExpedicion) updateData.lugarExpedicion = data.lugarExpedicion
+  if (data.entidadEmisora) updateData.entidadEmisora = data.entidadEmisora
+  if (data.notas) updateData.notas = data.notas
+
+  // Agregar archivo si se proporciona
+  if (archivoUrl) {
+    updateData.archivoUrl = archivoUrl
+    updateData.nombreArchivo = nombreArchivo
+    updateData.tamanioArchivo = tamanioArchivo
+  }
+
+  // Convertir fechas si existen
+  if (data.fechaExpedicion) {
+    const [year, month, day] = data.fechaExpedicion.split('-').map(Number)
+    updateData.fechaExpedicion = new Date(Date.UTC(year, month - 1, day))
+  }
+
+  if (data.fechaVencimiento) {
+    const [year, month, day] = data.fechaVencimiento.split('-').map(Number)
+    updateData.fechaVencimiento = new Date(Date.UTC(year, month - 1, day))
+  }
+
+  const docRef = doc(db, 'documentos_personales', id)
+  await updateDoc(docRef, updateData)
+}
+
+export async function deleteDocumentoPersonal(id: string): Promise<void> {
+  const docRef = doc(db, 'documentos_personales', id)
+  await updateDoc(docRef, {
+    activo: false,
+    updatedAt: serverTimestamp()
+  })
+}
+
+// Obtener documentos próximos a vencer (para alertas)
+export async function getDocumentosProximosAVencer(userId: string, diasAnticipacion: number = 30): Promise<DocumentoPersonal[]> {
+  const hoy = new Date()
+  const fechaLimite = new Date()
+  fechaLimite.setDate(hoy.getDate() + diasAnticipacion)
+
+  const q = query(
+    collection(db, 'documentos_personales'),
+    where('userId', '==', userId),
+    where('activo', '==', true),
+    where('fechaVencimiento', '>=', hoy),
+    where('fechaVencimiento', '<=', fechaLimite),
+    orderBy('fechaVencimiento', 'asc')
+  )
+
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    fechaExpedicion: doc.data().fechaExpedicion ? (doc.data().fechaExpedicion as Timestamp).toDate() : undefined,
+    fechaVencimiento: doc.data().fechaVencimiento ? (doc.data().fechaVencimiento as Timestamp).toDate() : undefined,
+    createdAt: (doc.data().createdAt as Timestamp)?.toDate() || new Date(),
+    updatedAt: (doc.data().updatedAt as Timestamp)?.toDate() || new Date()
+  })) as DocumentoPersonal[]
 }

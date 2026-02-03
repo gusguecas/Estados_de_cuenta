@@ -186,3 +186,88 @@ export interface TransferenciaFormData {
   notas?: string
   adjuntos?: string[] // URLs de archivos adjuntos
 }
+
+// ============================================================================
+// PERSONAS (FAMILIARES)
+// ============================================================================
+
+export interface Persona {
+  id: string
+  userId: string
+  nombre: string
+  apellidos: string
+  parentesco: 'titular' | 'esposa' | 'esposo' | 'hijo' | 'hija' | 'padre' | 'madre' | 'otro'
+  fechaNacimiento?: Date
+  email?: string
+  telefono?: string
+  notas?: string
+  activo: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PersonaFormData {
+  nombre: string
+  apellidos: string
+  parentesco: 'titular' | 'esposa' | 'esposo' | 'hijo' | 'hija' | 'padre' | 'madre' | 'otro'
+  fechaNacimiento?: string
+  email?: string
+  telefono?: string
+  notas?: string
+}
+
+// ============================================================================
+// DOCUMENTOS PERSONALES (IDENTIDAD)
+// ============================================================================
+
+export type TipoDocumentoPersonal =
+  | 'pasaporte'
+  | 'visa'
+  | 'ine'
+  | 'licencia_conducir'
+  | 'curp'
+  | 'acta_nacimiento'
+  | 'acta_matrimonio'
+  | 'rfc'
+  | 'comprobante_domicilio'
+  | 'poliza_seguro_auto'
+  | 'poliza_seguro_vida'
+  | 'poliza_gastos_medicos'
+  | 'poliza_seguro_hogar'
+  | 'cartilla_militar'
+  | 'cedula_profesional'
+  | 'titulo_profesional'
+  | 'seguro_social'
+  | 'otro'
+
+export interface DocumentoPersonal {
+  id: string
+  userId: string
+  personaId: string // A quién pertenece el documento
+  tipoDocumento: TipoDocumentoPersonal
+  nombre: string
+  numeroDocumento?: string
+  fechaExpedicion?: Date
+  fechaVencimiento?: Date
+  lugarExpedicion?: string
+  entidadEmisora?: string // SAT, INE, SRE, Aseguradora, etc.
+  notas?: string
+  archivoUrl?: string
+  nombreArchivo?: string
+  tamanioArchivo?: number
+  activo: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DocumentoPersonalFormData {
+  personaId: string
+  tipoDocumento: TipoDocumentoPersonal
+  nombre: string
+  numeroDocumento?: string
+  fechaExpedicion?: string
+  fechaVencimiento?: string
+  lugarExpedicion?: string
+  entidadEmisora?: string
+  notas?: string
+}
